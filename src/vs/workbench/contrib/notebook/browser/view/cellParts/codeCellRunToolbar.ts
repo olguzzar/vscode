@@ -3,27 +3,27 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { ToolBar } from 'vs/base/browser/ui/toolbar/toolbar';
-import { Action, IAction } from 'vs/base/common/actions';
-import { DisposableStore } from 'vs/base/common/lifecycle';
-import { MarshalledId } from 'vs/base/common/marshallingIds';
-import { EditorContextKeys } from 'vs/editor/common/editorContextKeys';
-import { localize } from 'vs/nls';
-import { DropdownWithPrimaryActionViewItem } from 'vs/platform/actions/browser/dropdownWithPrimaryActionViewItem';
-import { createAndFillInActionBarActions } from 'vs/platform/actions/browser/menuEntryActionViewItem';
-import { IMenu, IMenuService, MenuItemAction } from 'vs/platform/actions/common/actions';
-import { IContextKeyService } from 'vs/platform/contextkey/common/contextkey';
-import { InputFocusedContext } from 'vs/platform/contextkey/common/contextkeys';
-import { IContextMenuService } from 'vs/platform/contextview/browser/contextView';
-import { IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
-import { IKeybindingService } from 'vs/platform/keybinding/common/keybinding';
-import { INotebookCellActionContext } from 'vs/workbench/contrib/notebook/browser/controller/coreActions';
-import { ICellViewModel, INotebookEditorDelegate } from 'vs/workbench/contrib/notebook/browser/notebookBrowser';
-import { CellPart } from 'vs/workbench/contrib/notebook/browser/view/cellPart';
-import { registerStickyScroll } from 'vs/workbench/contrib/notebook/browser/view/cellParts/stickyScroll';
-import { NOTEBOOK_CELL_EXECUTION_STATE, NOTEBOOK_CELL_LIST_FOCUSED, NOTEBOOK_CELL_TYPE, NOTEBOOK_EDITOR_FOCUSED } from 'vs/workbench/contrib/notebook/common/notebookContextKeys';
+import { ToolBar } from '../../../../../../base/browser/ui/toolbar/toolbar.js';
+import { Action, IAction } from '../../../../../../base/common/actions.js';
+import { DisposableStore } from '../../../../../../base/common/lifecycle.js';
+import { MarshalledId } from '../../../../../../base/common/marshallingIds.js';
+import { EditorContextKeys } from '../../../../../../editor/common/editorContextKeys.js';
+import { localize } from '../../../../../../nls.js';
+import { DropdownWithPrimaryActionViewItem } from '../../../../../../platform/actions/browser/dropdownWithPrimaryActionViewItem.js';
+import { createAndFillInActionBarActions } from '../../../../../../platform/actions/browser/menuEntryActionViewItem.js';
+import { IMenu, IMenuService, MenuItemAction } from '../../../../../../platform/actions/common/actions.js';
+import { IContextKeyService, IScopedContextKeyService } from '../../../../../../platform/contextkey/common/contextkey.js';
+import { InputFocusedContext } from '../../../../../../platform/contextkey/common/contextkeys.js';
+import { IContextMenuService } from '../../../../../../platform/contextview/browser/contextView.js';
+import { IInstantiationService } from '../../../../../../platform/instantiation/common/instantiation.js';
+import { IKeybindingService } from '../../../../../../platform/keybinding/common/keybinding.js';
+import { INotebookCellActionContext } from '../../controller/coreActions.js';
+import { ICellViewModel, INotebookEditorDelegate } from '../../notebookBrowser.js';
+import { CellContentPart } from '../cellPart.js';
+import { registerCellToolbarStickyScroll } from './cellToolbarStickyScroll.js';
+import { NOTEBOOK_CELL_EXECUTION_STATE, NOTEBOOK_CELL_LIST_FOCUSED, NOTEBOOK_CELL_TYPE, NOTEBOOK_EDITOR_FOCUSED } from '../../../common/notebookContextKeys.js';
 
-export class RunToolbar extends CellPart {
+export class RunToolbar extends CellContentPart {
 	private toolbar!: ToolBar;
 
 	private primaryMenu: IMenu;
@@ -34,10 +34,10 @@ export class RunToolbar extends CellPart {
 		readonly contextKeyService: IContextKeyService,
 		readonly cellContainer: HTMLElement,
 		readonly runButtonContainer: HTMLElement,
-		@IMenuService readonly menuService: IMenuService,
-		@IKeybindingService readonly keybindingService: IKeybindingService,
-		@IContextMenuService readonly contextMenuService: IContextMenuService,
-		@IInstantiationService readonly instantiationService: IInstantiationService,
+		@IMenuService menuService: IMenuService,
+		@IKeybindingService private readonly keybindingService: IKeybindingService,
+		@IContextMenuService private readonly contextMenuService: IContextMenuService,
+		@IInstantiationService private readonly instantiationService: IInstantiationService,
 	) {
 		super();
 
@@ -56,14 +56,17 @@ export class RunToolbar extends CellPart {
 	}
 
 	override didRenderCell(element: ICellViewModel): void {
-		this.cellDisposables.add(registerStickyScroll(this.notebookEditor, element, this.runButtonContainer));
+		this.cellDisposables.add(registerCellToolbarStickyScroll(this.notebookEditor, element, this.runButtonContainer));
 
-		this.toolbar.context = <INotebookCellActionContext>{
-			ui: true,
-			cell: element,
-			notebookEditor: this.notebookEditor,
-			$mid: MarshalledId.NotebookCellActionContext
-		};
+		if (this.notebookEditor.hasModel()) {
+			const context: INotebookCellActionContext & { $mid: number } = {
+				ui: true,
+				cell: element,
+				notebookEditor: this.notebookEditor,
+				$mid: MarshalledId.NotebookCellActionContext
+			};
+			this.toolbar.context = context;
+		}
 	}
 
 	getCellToolbarActions(menu: IMenu): { primary: IAction[]; secondary: IAction[] } {
@@ -84,7 +87,7 @@ export class RunToolbar extends CellPart {
 		const executionContextKeyService = this._register(getCodeCellExecutionContextKeyService(contextKeyService));
 		this.toolbar = this._register(new ToolBar(container, this.contextMenuService, {
 			getKeyBinding: keybindingProvider,
-			actionViewItemProvider: _action => {
+			actionViewItemProvider: (_action, _options) => {
 				actionViewItemDisposables.clear();
 
 				const primary = this.getCellToolbarActions(this.primaryMenu).primary[0];
@@ -104,6 +107,7 @@ export class RunToolbar extends CellPart {
 					'notebook-cell-run-toolbar',
 					this.contextMenuService,
 					{
+						..._options,
 						getKeyBinding: keybindingProvider
 					});
 				actionViewItemDisposables.add(item.onDidChangeDropdownVisibility(visible => {
@@ -117,7 +121,7 @@ export class RunToolbar extends CellPart {
 	}
 }
 
-export function getCodeCellExecutionContextKeyService(contextKeyService: IContextKeyService): IContextKeyService {
+export function getCodeCellExecutionContextKeyService(contextKeyService: IContextKeyService): IScopedContextKeyService {
 	// Create a fake ContextKeyService, and look up the keybindings within this context.
 	const executionContextKeyService = contextKeyService.createScoped(document.createElement('div'));
 	InputFocusedContext.bindTo(executionContextKeyService).set(true);

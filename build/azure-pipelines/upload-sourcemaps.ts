@@ -8,13 +8,14 @@ import * as es from 'event-stream';
 import * as Vinyl from 'vinyl';
 import * as vfs from 'vinyl-fs';
 import * as util from '../lib/util';
+import { isAMD } from '../lib/amd';
 // @ts-ignore
 import * as deps from '../lib/dependencies';
 import { ClientSecretCredential } from '@azure/identity';
 const azure = require('gulp-azure-storage');
 
 const root = path.dirname(path.dirname(__dirname));
-const commit = process.env['VSCODE_DISTRO_COMMIT'] || process.env['BUILD_SOURCEVERSION'];
+const commit = process.env['BUILD_SOURCEVERSION'];
 const credential = new ClientSecretCredential(process.env['AZURE_TENANT_ID']!, process.env['AZURE_CLIENT_ID']!, process.env['AZURE_CLIENT_SECRET']!);
 
 // optionally allow to pass in explicit base/maps to upload
@@ -29,6 +30,9 @@ function src(base: string, maps = `${base}/**/*.map`) {
 }
 
 function main(): Promise<void> {
+	if (isAMD()) {
+		return Promise.resolve(); // in AMD we run into some issues, but we want to unblock the build for recovery
+	}
 	const sources: any[] = [];
 
 	// vscode client maps (default)
@@ -39,7 +43,8 @@ function main(): Promise<void> {
 		const productionDependencies: { name: string; path: string; version: string }[] = deps.getProductionDependencies(root);
 		const productionDependenciesSrc = productionDependencies.map(d => path.relative(root, d.path)).map(d => `./${d}/**/*.map`);
 		const nodeModules = vfs.src(productionDependenciesSrc, { base: '.' })
-			.pipe(util.cleanNodeModules(path.join(root, 'build', '.moduleignore')));
+			.pipe(util.cleanNodeModules(path.join(root, 'build', '.moduleignore')))
+			.pipe(util.cleanNodeModules(path.join(root, 'build', `.moduleignore.${process.platform}`)));
 		sources.push(nodeModules);
 
 		const extensionsOut = vfs.src(['.build/extensions/**/*.js.map', '!**/node_modules/**'], { base: '.build' });

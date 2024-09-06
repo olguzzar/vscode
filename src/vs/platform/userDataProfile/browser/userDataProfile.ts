@@ -3,14 +3,14 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { BroadcastDataChannel } from 'vs/base/browser/broadcast';
-import { revive } from 'vs/base/common/marshalling';
-import { UriDto } from 'vs/base/common/uri';
-import { IEnvironmentService } from 'vs/platform/environment/common/environment';
-import { IFileService } from 'vs/platform/files/common/files';
-import { ILogService } from 'vs/platform/log/common/log';
-import { IUriIdentityService } from 'vs/platform/uriIdentity/common/uriIdentity';
-import { DidChangeProfilesEvent, IUserDataProfile, IUserDataProfilesService, PROFILES_ENABLEMENT_CONFIG, reviveProfile, StoredProfileAssociations, StoredUserDataProfile, UserDataProfilesService } from 'vs/platform/userDataProfile/common/userDataProfile';
+import { BroadcastDataChannel } from '../../../base/browser/broadcast.js';
+import { revive } from '../../../base/common/marshalling.js';
+import { UriDto } from '../../../base/common/uri.js';
+import { IEnvironmentService } from '../../environment/common/environment.js';
+import { IFileService } from '../../files/common/files.js';
+import { ILogService } from '../../log/common/log.js';
+import { IUriIdentityService } from '../../uriIdentity/common/uriIdentity.js';
+import { DidChangeProfilesEvent, IUserDataProfile, IUserDataProfilesService, reviveProfile, StoredProfileAssociations, StoredUserDataProfile, UserDataProfilesService } from '../common/userDataProfile.js';
 
 type BroadcastedProfileChanges = UriDto<Omit<DidChangeProfilesEvent, 'all'>>;
 
@@ -25,7 +25,6 @@ export class BrowserUserDataProfilesService extends UserDataProfilesService impl
 		@ILogService logService: ILogService,
 	) {
 		super(environmentService, fileService, uriIdentityService, logService);
-		super.setEnablement(window.localStorage.getItem(PROFILES_ENABLEMENT_CONFIG) === 'true');
 		this.changesBroadcastChannel = this._register(new BroadcastDataChannel<BroadcastedProfileChanges>(`${UserDataProfilesService.PROFILES_KEY}.changes`));
 		this._register(this.changesBroadcastChannel.onDidReceiveData(changes => {
 			try {
@@ -66,14 +65,9 @@ export class BrowserUserDataProfilesService extends UserDataProfilesService impl
 		}
 	}
 
-	override setEnablement(enabled: boolean): void {
-		super.setEnablement(enabled);
-		window.localStorage.setItem(PROFILES_ENABLEMENT_CONFIG, enabled ? 'true' : 'false');
-	}
-
 	protected override getStoredProfiles(): StoredUserDataProfile[] {
 		try {
-			const value = window.localStorage.getItem(UserDataProfilesService.PROFILES_KEY);
+			const value = localStorage.getItem(UserDataProfilesService.PROFILES_KEY);
 			if (value) {
 				return revive(JSON.parse(value));
 			}
@@ -90,14 +84,21 @@ export class BrowserUserDataProfilesService extends UserDataProfilesService impl
 	}
 
 	protected override saveStoredProfiles(storedProfiles: StoredUserDataProfile[]): void {
-		window.localStorage.setItem(UserDataProfilesService.PROFILES_KEY, JSON.stringify(storedProfiles));
+		localStorage.setItem(UserDataProfilesService.PROFILES_KEY, JSON.stringify(storedProfiles));
 	}
 
 	protected override getStoredProfileAssociations(): StoredProfileAssociations {
+		const migrateKey = 'profileAssociationsMigration';
 		try {
-			const value = window.localStorage.getItem(UserDataProfilesService.PROFILE_ASSOCIATIONS_KEY);
+			const value = localStorage.getItem(UserDataProfilesService.PROFILE_ASSOCIATIONS_KEY);
 			if (value) {
-				return revive(JSON.parse(value));
+				let associations: StoredProfileAssociations = JSON.parse(value);
+				if (!localStorage.getItem(migrateKey)) {
+					associations = this.migrateStoredProfileAssociations(associations);
+					this.saveStoredProfileAssociations(associations);
+					localStorage.setItem(migrateKey, 'true');
+				}
+				return associations;
 			}
 		} catch (error) {
 			/* ignore */
@@ -107,7 +108,7 @@ export class BrowserUserDataProfilesService extends UserDataProfilesService impl
 	}
 
 	protected override saveStoredProfileAssociations(storedProfileAssociations: StoredProfileAssociations): void {
-		window.localStorage.setItem(UserDataProfilesService.PROFILE_ASSOCIATIONS_KEY, JSON.stringify(storedProfileAssociations));
+		localStorage.setItem(UserDataProfilesService.PROFILE_ASSOCIATIONS_KEY, JSON.stringify(storedProfileAssociations));
 	}
 
 }

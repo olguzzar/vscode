@@ -3,13 +3,14 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { IDisposable } from 'vs/base/common/lifecycle';
-import { createDecorator } from 'vs/platform/instantiation/common/instantiation';
-import { ThemeIcon } from 'vs/platform/theme/common/themeService';
+import { IDisposable } from '../../../../base/common/lifecycle.js';
+import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
+import { ThemeIcon } from '../../../../base/common/themables.js';
+import { Event } from '../../../../base/common/event.js';
+import { ViewContainer } from '../../../common/views.js';
 
 export interface IActivity {
 	readonly badge: IBadge;
-	readonly clazz?: string;
 	readonly priority?: number;
 }
 
@@ -20,9 +21,19 @@ export interface IActivityService {
 	readonly _serviceBrand: undefined;
 
 	/**
+	 * Emitted when activity changes for a view container or when the activity of the global actions change.
+	 */
+	readonly onDidChangeActivity: Event<string | ViewContainer>;
+
+	/**
 	 * Show activity for the given view container
 	 */
 	showViewContainerActivity(viewContainerId: string, badge: IActivity): IDisposable;
+
+	/**
+	 * Returns the activity for the given view container
+	 */
+	getViewContainerActivities(viewContainerId: string): IActivity[];
 
 	/**
 	 * Show activity for the given view
@@ -38,6 +49,11 @@ export interface IActivityService {
 	 * Show global activity
 	 */
 	showGlobalActivity(activity: IActivity): IDisposable;
+
+	/**
+	 * Return the activity for the given action
+	 */
+	getActivity(id: string): IActivity[];
 }
 
 export interface IBadge {
@@ -65,13 +81,6 @@ export class NumberBadge extends BaseBadge {
 
 	override getDescription(): string {
 		return this.descriptorFn(this.number);
-	}
-}
-
-export class TextBadge extends BaseBadge {
-
-	constructor(readonly text: string, descriptorFn: () => string) {
-		super(descriptorFn);
 	}
 }
 

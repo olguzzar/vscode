@@ -59,6 +59,21 @@ const CORE_TYPES = [
 	'URL',
 	'URLSearchParams',
 	'ReadonlyArray',
+	'Event',
+	'EventTarget',
+	'BroadcastChannel',
+	'performance',
+	'Blob',
+	'crypto',
+	'File',
+	'fetch',
+	'RequestInit',
+	'Headers',
+	'Response',
+	'__global',
+	'PerformanceMark',
+	'PerformanceObserver',
+	'ImportMeta'
 ];
 
 // Types that are defined in a common layer but are known to be only
@@ -68,7 +83,9 @@ const NATIVE_TYPES = [
 	'INativeEnvironmentService',
 	'AbstractNativeEnvironmentService',
 	'INativeWindowConfiguration',
-	'ICommonNativeHostService'
+	'ICommonNativeHostService',
+	'INativeHostService',
+	'IMainProcessService'
 ];
 
 const RULES: IRule[] = [
@@ -79,12 +96,6 @@ const RULES: IRule[] = [
 		skip: true // -> skip all test files
 	},
 
-	// TODO@bpasero remove me once electron utility process has landed
-	{
-		target: '**/vs/workbench/services/extensions/electron-sandbox/nativeLocalProcessExtensionHost.ts',
-		skip: true
-	},
-
 	// Common: vs/base/common/platform.ts
 	{
 		target: '**/vs/base/common/platform.ts',
@@ -93,6 +104,23 @@ const RULES: IRule[] = [
 
 			// Safe access to postMessage() and friends
 			'MessageEvent',
+		],
+		disallowedTypes: NATIVE_TYPES,
+		disallowedDefinitions: [
+			'lib.dom.d.ts', // no DOM
+			'@types/node'	// no node.js
+		]
+	},
+
+	// Common: vs/base/common/async.ts
+	{
+		target: '**/vs/base/common/async.ts',
+		allowedTypes: [
+			...CORE_TYPES,
+
+			// Safe access to requestIdleCallback & cancelIdleCallback
+			'requestIdleCallback',
+			'cancelIdleCallback'
 		],
 		disallowedTypes: NATIVE_TYPES,
 		disallowedDefinitions: [
@@ -134,6 +162,17 @@ const RULES: IRule[] = [
 		]
 	},
 
+	// Common: vs/platform/native/common/nativeHostService.ts
+	{
+		target: '**/vs/platform/native/common/nativeHostService.ts',
+		allowedTypes: CORE_TYPES,
+		disallowedTypes: [/* Ignore native types that are defined from here */],
+		disallowedDefinitions: [
+			'lib.dom.d.ts', // no DOM
+			'@types/node'	// no node.js
+		]
+	},
+
 	// Common: vs/workbench/api/common/extHostExtensionService.ts
 	{
 		target: '**/vs/workbench/api/common/extHostExtensionService.ts',
@@ -146,6 +185,22 @@ const RULES: IRule[] = [
 		disallowedTypes: NATIVE_TYPES,
 		disallowedDefinitions: [
 			'lib.dom.d.ts', // no DOM
+			'@types/node'	// no node.js
+		]
+	},
+
+	// Common: vs/base/parts/sandbox/electron-sandbox/preload.js
+	{
+		target: '**/vs/base/parts/sandbox/electron-sandbox/preload.js',
+		allowedTypes: [
+			...CORE_TYPES,
+
+			// Safe access to a very small subset of node.js
+			'process',
+			'NodeJS'
+		],
+		disallowedTypes: NATIVE_TYPES,
+		disallowedDefinitions: [
 			'@types/node'	// no node.js
 		]
 	},
@@ -202,10 +257,22 @@ const RULES: IRule[] = [
 		]
 	},
 
-	// Electron (renderer): skip
+	// Electron (utility)
 	{
-		target: '**/vs/**/electron-browser/**',
-		skip: true // -> supports all types
+		target: '**/vs/**/electron-utility/**',
+		allowedTypes: [
+			...CORE_TYPES,
+
+			// --> types from electron.d.ts that duplicate from lib.dom.d.ts
+			'Event',
+			'Request'
+		],
+		disallowedTypes: [
+			'ipcMain' // not allowed, use validatedIpcMain instead
+		],
+		disallowedDefinitions: [
+			'lib.dom.d.ts'	// no DOM
+		]
 	},
 
 	// Electron (main)

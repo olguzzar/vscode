@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { parse as parseUrl, Url } from 'url';
-import { isBoolean } from 'vs/base/common/types';
+import { isBoolean } from '../../../base/common/types.js';
 
 export type Agent = any;
 
@@ -39,12 +39,26 @@ export async function getProxyAgent(rawRequestURL: string, env: typeof process.e
 
 	const opts = {
 		host: proxyEndpoint.hostname || '',
-		port: proxyEndpoint.port || (proxyEndpoint.protocol === 'https' ? '443' : '80'),
+		port: (proxyEndpoint.port ? +proxyEndpoint.port : 0) || (proxyEndpoint.protocol === 'https' ? 443 : 80),
 		auth: proxyEndpoint.auth,
 		rejectUnauthorized: isBoolean(options.strictSSL) ? options.strictSSL : true,
 	};
 
-	return requestURL.protocol === 'http:'
-		? new (await import('http-proxy-agent'))(opts as any as Url)
-		: new (await import('https-proxy-agent'))(opts);
+	if (requestURL.protocol === 'http:') {
+		// ESM-comment-begin
+		// const mod = await import('http-proxy-agent');
+		// ESM-comment-end
+		// ESM-uncomment-begin
+		const { default: mod } = await import('http-proxy-agent');
+		// ESM-uncomment-end
+		return new mod.HttpProxyAgent(proxyURL, opts);
+	} else {
+		// ESM-comment-begin
+		// const mod = await import('https-proxy-agent');
+		// ESM-comment-end
+		// ESM-uncomment-begin
+		const { default: mod } = await import('https-proxy-agent');
+		// ESM-uncomment-end
+		return new mod.HttpsProxyAgent(proxyURL, opts);
+	}
 }

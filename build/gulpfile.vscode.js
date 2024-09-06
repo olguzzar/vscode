@@ -6,22 +6,20 @@
 'use strict';
 
 const gulp = require('gulp');
-const merge = require('gulp-merge-json');
 const fs = require('fs');
-const os = require('os');
-const cp = require('child_process');
 const path = require('path');
 const es = require('event-stream');
 const vfs = require('vinyl-fs');
 const rename = require('gulp-rename');
 const replace = require('gulp-replace');
 const filter = require('gulp-filter');
-const _ = require('underscore');
 const util = require('./lib/util');
 const { getVersion } = require('./lib/getVersion');
+const { readISODate } = require('./lib/date');
 const task = require('./lib/task');
-const buildfile = require('../src/buildfile');
+const buildfile = require('./buildfile');
 const optimize = require('./lib/optimize');
+const { inlineMeta } = require('./lib/inlineMeta');
 const root = path.dirname(__dirname);
 const commit = getVersion(root);
 const packageJson = require('../package.json');
@@ -34,60 +32,146 @@ const createAsar = require('./lib/asar').createAsar;
 const minimist = require('minimist');
 const { compileBuildTask } = require('./gulpfile.compile');
 const { compileExtensionsBuildTask, compileExtensionMediaBuildTask } = require('./gulpfile.extensions');
-const { getSettingsSearchBuildId, shouldSetupSettingsSearch } = require('./azure-pipelines/upload-configuration');
 const { promisify } = require('util');
+const { isAMD } = require('./lib/amd');
 const glob = promisify(require('glob'));
 const rcedit = promisify(require('rcedit'));
 
 // Build
-const vscodeEntryPoints = _.flatten([
+const vscodeEntryPoints = !isAMD() ? [
+	buildfile.base,
+	buildfile.workerExtensionHost,
+	buildfile.workerNotebook,
+	buildfile.workerLanguageDetection,
+	buildfile.workerLocalFileSearch,
+	buildfile.workerProfileAnalysis,
+	buildfile.workerOutputLinks,
+	buildfile.workerBackgroundTokenization,
+	buildfile.workbenchDesktop(),
+	buildfile.code
+].flat() : [
 	buildfile.entrypoint('vs/workbench/workbench.desktop.main'),
 	buildfile.base,
 	buildfile.workerExtensionHost,
 	buildfile.workerNotebook,
 	buildfile.workerLanguageDetection,
-	buildfile.workerSharedProcess,
 	buildfile.workerLocalFileSearch,
 	buildfile.workerProfileAnalysis,
-	buildfile.workbenchDesktop,
+	buildfile.workbenchDesktop(),
 	buildfile.code
-]);
+].flat();
 
-const vscodeResources = [
-	'out-build/bootstrap.js',
-	'out-build/bootstrap-fork.js',
-	'out-build/bootstrap-amd.js',
-	'out-build/bootstrap-node.js',
-	'out-build/bootstrap-window.js',
+const vscodeResourceIncludes = !isAMD() ? [
+
+	// NLS
+	'out-build/nls.messages.json',
+	'out-build/nls.keys.json',
+
+	// Workbench
+	'out-build/vs/code/electron-sandbox/workbench/workbench.esm.html',
+
+	// Electron Preload
+	'out-build/vs/base/parts/sandbox/electron-sandbox/preload.js',
+	'out-build/vs/base/parts/sandbox/electron-sandbox/preload-aux.js',
+
+	// Node Scripts
+	'out-build/vs/base/node/{terminateProcess.sh,cpuUsage.sh,ps.sh}',
+
+	// Touchbar
+	'out-build/vs/workbench/browser/parts/editor/media/*.png',
+	'out-build/vs/workbench/contrib/debug/browser/media/*.png',
+
+	// External Terminal
+	'out-build/vs/workbench/contrib/externalTerminal/**/*.scpt',
+
+	// Terminal shell integration
+	'out-build/vs/workbench/contrib/terminal/common/scripts/fish_xdg_data/fish/vendor_conf.d/*.fish',
+	'out-build/vs/workbench/contrib/terminal/common/scripts/*.ps1',
+	'out-build/vs/workbench/contrib/terminal/common/scripts/*.psm1',
+	'out-build/vs/workbench/contrib/terminal/common/scripts/*.sh',
+	'out-build/vs/workbench/contrib/terminal/common/scripts/*.zsh',
+
+	// Accessibility Signals
+	'out-build/vs/platform/accessibilitySignal/browser/media/*.mp3',
+
+	// Welcome
+	'out-build/vs/workbench/contrib/welcomeGettingStarted/common/media/**/*.{svg,png}',
+
+	// Extensions
+	'out-build/vs/workbench/contrib/extensions/browser/media/{theme-icon.png,language-icon.svg}',
+	'out-build/vs/workbench/services/extensionManagement/common/media/*.{svg,png}',
+
+	// Webview
+	'out-build/vs/workbench/contrib/webview/browser/pre/*.{js,html}',
+
+	// Extension Host Worker
+	'out-build/vs/workbench/services/extensions/worker/webWorkerExtensionHostIframe.esm.html',
+
+	// Process Explorer
+	'out-build/vs/code/electron-sandbox/processExplorer/processExplorer.esm.html',
+
+	// Tree Sitter highlights
+	'out-build/vs/editor/common/languages/highlights/*.scm',
+
+	// Issue Reporter
+	'out-build/vs/workbench/contrib/issue/electron-sandbox/issueReporter.esm.html'
+] : [
+	'out-build/nls.messages.json',
+	'out-build/nls.keys.json',
 	'out-build/vs/**/*.{svg,png,html,jpg,mp3}',
 	'!out-build/vs/code/browser/**/*.html',
+	'!out-build/vs/code/**/*-dev.html',
+	'!out-build/vs/code/**/*-dev.esm.html',
 	'!out-build/vs/editor/standalone/**/*.svg',
-	'out-build/vs/base/common/performance.js',
 	'out-build/vs/base/node/{stdForkStart.js,terminateProcess.sh,cpuUsage.sh,ps.sh}',
 	'out-build/vs/base/browser/ui/codicons/codicon/**',
-	'out-build/vs/base/parts/sandbox/electron-browser/preload.js',
+	'out-build/vs/base/parts/sandbox/electron-sandbox/preload.js',
+	'out-build/vs/base/parts/sandbox/electron-sandbox/preload-aux.js',
 	'out-build/vs/workbench/browser/media/*-theme.css',
 	'out-build/vs/workbench/contrib/debug/**/*.json',
 	'out-build/vs/workbench/contrib/externalTerminal/**/*.scpt',
-	'out-build/vs/workbench/contrib/terminal/browser/media/*.fish',
-	'out-build/vs/workbench/contrib/terminal/browser/media/*.ps1',
-	'out-build/vs/workbench/contrib/terminal/browser/media/*.sh',
-	'out-build/vs/workbench/contrib/terminal/browser/media/*.zsh',
+	'out-build/vs/workbench/contrib/terminal/common/scripts/fish_xdg_data/fish/vendor_conf.d/*.fish',
+	'out-build/vs/workbench/contrib/terminal/common/scripts/*.ps1',
+	'out-build/vs/workbench/contrib/terminal/common/scripts/*.psm1',
+	'out-build/vs/workbench/contrib/terminal/common/scripts/*.sh',
+	'out-build/vs/workbench/contrib/terminal/common/scripts/*.zsh',
 	'out-build/vs/workbench/contrib/webview/browser/pre/*.js',
+	'!out-build/vs/workbench/contrib/issue/**/*-dev.html',
+	'!out-build/vs/workbench/contrib/issue/**/*-dev.esm.html',
+	'out-build/vs/editor/common/languages/highlights/*.scm',
 	'out-build/vs/**/markdown.css',
 	'out-build/vs/workbench/contrib/tasks/**/*.json',
-	'out-build/vs/platform/files/**/*.exe',
-	'out-build/vs/platform/files/**/*.md',
+	'!**/test/**'
+];
+
+const vscodeResources = [
+
+	// Includes
+	...vscodeResourceIncludes,
+
+	// Excludes
+	'!out-build/vs/code/browser/**',
+	'!out-build/vs/editor/standalone/**',
+	'!out-build/vs/code/**/*-dev.html',
+	'!out-build/vs/code/**/*-dev.esm.html',
+	'!out-build/vs/workbench/contrib/issue/**/*-dev.html',
+	'!out-build/vs/workbench/contrib/issue/**/*-dev.esm.html',
 	'!**/test/**'
 ];
 
 // Do not change the order of these files! They will
 // be inlined into the target window file in this order
 // and they depend on each other in this way.
-const windowBootstrapFiles = [
-	'out-build/bootstrap.js',
-	'out-build/vs/loader.js',
-	'out-build/bootstrap-window.js'
+const windowBootstrapFiles = [];
+if (isAMD()) {
+	windowBootstrapFiles.push('out-build/vs/loader.js');
+}
+windowBootstrapFiles.push('out-build/bootstrap-window.js');
+
+const commonJSEntryPoints = [
+	'out-build/main.js',
+	'out-build/cli.js',
+	'out-build/bootstrap-fork.js'
 ];
 
 const optimizeVSCodeTask = task.define('optimize-vscode', task.series(
@@ -108,32 +192,32 @@ const optimizeVSCodeTask = task.define('optimize-vscode', task.series(
 			},
 			commonJS: {
 				src: 'out-build',
-				entryPoints: [
-					'out-build/main.js',
-					'out-build/cli.js'
-				],
+				entryPoints: commonJSEntryPoints,
 				platform: 'node',
 				external: [
 					'electron',
 					'minimist',
-					// TODO: we cannot inline `product.json` because
+					'original-fs',
+					// We cannot inline `product.json` from here because
 					// it is being changed during build time at a later
 					// point in time (such as `checksums`)
-					'../product.json'
+					// We have a manual step to inline these later.
+					'../product.json',
+					'../package.json',
 				]
 			},
 			manual: [
 				{ src: [...windowBootstrapFiles, 'out-build/vs/code/electron-sandbox/workbench/workbench.js'], out: 'vs/code/electron-sandbox/workbench/workbench.js' },
-				{ src: [...windowBootstrapFiles, 'out-build/vs/code/electron-sandbox/issue/issueReporter.js'], out: 'vs/code/electron-sandbox/issue/issueReporter.js' },
-				{ src: [...windowBootstrapFiles, 'out-build/vs/code/electron-sandbox/processExplorer/processExplorer.js'], out: 'vs/code/electron-sandbox/processExplorer/processExplorer.js' },
-				{ src: [...windowBootstrapFiles, 'out-build/vs/code/electron-browser/sharedProcess/sharedProcess.js'], out: 'vs/code/electron-browser/sharedProcess/sharedProcess.js' }
+				// TODO: @justchen https://github.com/microsoft/vscode/issues/213332 make sure to remove when we use window.open on desktop.
+				{ src: [...windowBootstrapFiles, 'out-build/vs/workbench/contrib/issue/electron-sandbox/issueReporter.js'], out: 'vs/workbench/contrib/issue/electron-sandbox/issueReporter.js' },
+				{ src: [...windowBootstrapFiles, 'out-build/vs/code/electron-sandbox/processExplorer/processExplorer.js'], out: 'vs/code/electron-sandbox/processExplorer/processExplorer.js' }
 			]
 		}
 	)
 ));
 gulp.task(optimizeVSCodeTask);
 
-const sourceMappingURLBase = `https://ticino.blob.core.windows.net/sourcemaps/${commit}`;
+const sourceMappingURLBase = `https://main.vscode-cdn.net/sourcemaps/${commit}`;
 const minifyVSCodeTask = task.define('minify-vscode', task.series(
 	optimizeVSCodeTask,
 	util.rimraf('out-vscode-min'),
@@ -150,6 +234,16 @@ const core = task.define('core-ci', task.series(
 	)
 ));
 gulp.task(core);
+
+const corePr = task.define('core-ci-pr', task.series(
+	gulp.task('compile-build-pr'),
+	task.parallel(
+		gulp.task('minify-vscode'),
+		gulp.task('minify-vscode-reh'),
+		gulp.task('minify-vscode-reh-web'),
+	)
+));
+gulp.task(corePr);
 
 /**
  * Compute checksums for some files.
@@ -177,7 +271,7 @@ function computeChecksum(filename) {
 	const contents = fs.readFileSync(filename);
 
 	const hash = crypto
-		.createHash('md5')
+		.createHash('sha256')
 		.update(contents)
 		.digest('base64')
 		.replace(/=+$/, '');
@@ -192,17 +286,17 @@ function packageTask(platform, arch, sourceFolderName, destinationFolderName, op
 	platform = platform || process.platform;
 
 	return () => {
-		const electron = require('gulp-atom-electron');
+		const electron = require('@vscode/gulp-electron');
 		const json = require('gulp-json-editor');
 
 		const out = sourceFolderName;
 
 		const checksums = computeChecksums(out, [
-			'vs/base/parts/sandbox/electron-browser/preload.js',
+			'vs/base/parts/sandbox/electron-sandbox/preload.js',
 			'vs/workbench/workbench.desktop.main.js',
 			'vs/workbench/workbench.desktop.main.css',
 			'vs/workbench/api/node/extensionHostProcess.js',
-			'vs/code/electron-sandbox/workbench/workbench.html',
+			!isAMD() ? 'vs/code/electron-sandbox/workbench/workbench.esm.html' : 'vs/code/electron-sandbox/workbench/workbench.html',
 			'vs/code/electron-sandbox/workbench/workbench.js'
 		]);
 
@@ -232,27 +326,30 @@ function packageTask(platform, arch, sourceFolderName, destinationFolderName, op
 		}
 
 		const name = product.nameShort;
-		const packageJsonUpdates = { name, version };
+		const packageJsonUpdates = { name, version, ...(!isAMD() ? { type: 'module', main: 'out/main.js' } : {}) }; // TODO@esm this should be configured in the top level package.json
 
 		// for linux url handling
 		if (platform === 'linux') {
 			packageJsonUpdates.desktopName = `${product.applicationName}-url-handler.desktop`;
 		}
 
+		let packageJsonContents;
 		const packageJsonStream = gulp.src(['package.json'], { base: '.' })
-			.pipe(json(packageJsonUpdates));
+			.pipe(json(packageJsonUpdates))
+			.pipe(es.through(function (file) {
+				packageJsonContents = file.contents.toString();
+				this.emit('data', file);
+			}));
 
-		const date = new Date().toISOString();
-		const productJsonUpdate = { commit, date, checksums, version };
-
-		if (shouldSetupSettingsSearch()) {
-			productJsonUpdate.settingsSearchBuildId = getSettingsSearchBuildId(packageJson);
-		}
-
+		let productJsonContents;
 		const productJsonStream = gulp.src(['product.json'], { base: '.' })
-			.pipe(json(productJsonUpdate));
+			.pipe(json({ commit, date: readISODate('out-build'), checksums, version }))
+			.pipe(es.through(function (file) {
+				productJsonContents = file.contents.toString();
+				this.emit('data', file);
+			}));
 
-		const license = gulp.src(['LICENSES.chromium.html', product.licenseFileName, 'ThirdPartyNotices.txt', 'licenses/**'], { base: '.', allowEmpty: true });
+		const license = gulp.src([product.licenseFileName, 'ThirdPartyNotices.txt', 'licenses/**'], { base: '.', allowEmpty: true });
 
 		// TODO the API should be copied to `out` during compile, not here
 		const api = gulp.src('src/vscode-dts/vscode.d.ts').pipe(rename('out/vscode-dts/vscode.d.ts'));
@@ -262,23 +359,30 @@ function packageTask(platform, arch, sourceFolderName, destinationFolderName, op
 		const jsFilter = util.filter(data => !data.isDirectory() && /\.js$/.test(data.path));
 		const root = path.resolve(path.join(__dirname, '..'));
 		const productionDependencies = getProductionDependencies(root);
-		const dependenciesSrc = _.flatten(productionDependencies.map(d => path.relative(root, d.path)).map(d => [`${d}/**`, `!${d}/**/{test,tests}/**`]));
+		const dependenciesSrc = productionDependencies.map(d => path.relative(root, d.path)).map(d => [`${d}/**`, `!${d}/**/{test,tests}/**`, `!**/*.mk`]).flat();
 
-		const deps = gulp.src(dependenciesSrc, { base: '.', dot: true })
+		let deps = gulp.src(dependenciesSrc, { base: '.', dot: true })
 			.pipe(filter(['**', `!**/${config.version}/**`, '!**/bin/darwin-arm64-87/**', '!**/package-lock.json', '!**/yarn.lock', '!**/*.js.map']))
 			.pipe(util.cleanNodeModules(path.join(__dirname, '.moduleignore')))
+			.pipe(util.cleanNodeModules(path.join(__dirname, `.moduleignore.${process.platform}`)))
 			.pipe(jsFilter)
 			.pipe(util.rewriteSourceMappingURL(sourceMappingURLBase))
-			.pipe(jsFilter.restore)
-			.pipe(createAsar(path.join(process.cwd(), 'node_modules'), [
+			.pipe(jsFilter.restore);
+
+		if (isAMD()) { // TODO@esm: ASAR disabled in ESM
+			deps = deps.pipe(createAsar(path.join(process.cwd(), 'node_modules'), [
 				'**/*.node',
 				'**/@vscode/ripgrep/bin/*',
 				'**/node-pty/build/Release/*',
+				'**/node-pty/build/Release/conpty/*',
 				'**/node-pty/lib/worker/conoutSocketWorker.js',
 				'**/node-pty/lib/shared/conout.js',
 				'**/*.wasm',
-				'**/node-vsce-sign/bin/*',
+				'**/@vscode/vsce-sign/bin/*',
+			], [
+				'**/*.mk',
 			], 'node_modules.asar'));
+		}
 
 		let all = es.merge(
 			packageJsonStream,
@@ -336,8 +440,8 @@ function packageTask(platform, arch, sourceFolderName, destinationFolderName, op
 			.pipe(util.skipDirectories())
 			.pipe(util.fixWin32DirectoryPermissions())
 			.pipe(filter(['**', '!**/.github/**'], { dot: true })) // https://github.com/microsoft/vscode/issues/116523
-			.pipe(electron(_.extend({}, config, { platform, arch: arch === 'armhf' ? 'arm' : arch, ffmpegChromium: true })))
-			.pipe(filter(['**', '!LICENSE', '!LICENSES.chromium.html', '!version'], { dot: true }));
+			.pipe(electron({ ...config, platform, arch: arch === 'armhf' ? 'arm' : arch, ffmpegChromium: false }))
+			.pipe(filter(['**', '!LICENSE', '!version'], { dot: true }));
 
 		if (platform === 'linux') {
 			result = es.merge(result, gulp.src('resources/completions/bash/code', { base: '.' })
@@ -382,6 +486,12 @@ function packageTask(platform, arch, sourceFolderName, destinationFolderName, op
 				.pipe(rename('bin/' + product.applicationName)));
 		}
 
+		result = inlineMeta(result, {
+			targetPaths: commonJSEntryPoints,
+			packageJsonFn: () => packageJsonContents,
+			productJsonFn: () => productJsonContents
+		});
+
 		return result.pipe(vfs.dest(destination));
 	};
 }
@@ -418,12 +528,10 @@ function patchWin32DependenciesTask(destinationFolderName) {
 const buildRoot = path.dirname(root);
 
 const BUILD_TARGETS = [
-	{ platform: 'win32', arch: 'ia32' },
 	{ platform: 'win32', arch: 'x64' },
 	{ platform: 'win32', arch: 'arm64' },
 	{ platform: 'darwin', arch: 'x64', opts: { stats: true } },
 	{ platform: 'darwin', arch: 'arm64', opts: { stats: true } },
-	{ platform: 'linux', arch: 'ia32' },
 	{ platform: 'linux', arch: 'x64' },
 	{ platform: 'linux', arch: 'armhf' },
 	{ platform: 'linux', arch: 'arm64' },
@@ -491,17 +599,12 @@ gulp.task(task.define(
 		core,
 		compileExtensionsBuildTask,
 		function () {
-			const pathToMetadata = './out-vscode/nls.metadata.json';
-			const pathToRehWebMetadata = './out-vscode-reh-web/nls.metadata.json';
+			const pathToMetadata = './out-build/nls.metadata.json';
 			const pathToExtensions = '.build/extensions/*';
 			const pathToSetup = 'build/win32/i18n/messages.en.isl';
 
 			return es.merge(
-				gulp.src([pathToMetadata, pathToRehWebMetadata]).pipe(merge({
-					fileName: 'nls.metadata.json',
-					jsonSpace: '',
-					concatArrays: true
-				})).pipe(i18n.createXlfFilesForCoreBundle()),
+				gulp.src(pathToMetadata).pipe(i18n.createXlfFilesForCoreBundle()),
 				gulp.src(pathToSetup).pipe(i18n.createXlfFilesForIsl()),
 				gulp.src(pathToExtensions).pipe(i18n.createXlfFilesForExtensions())
 			).pipe(vfs.dest('../vscode-translations-export'));

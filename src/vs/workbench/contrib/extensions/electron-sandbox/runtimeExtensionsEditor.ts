@@ -3,30 +3,35 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import * as nls from 'vs/nls';
-import { Action } from 'vs/base/common/actions';
-import { ITelemetryService } from 'vs/platform/telemetry/common/telemetry';
-import { IInstantiationService, createDecorator } from 'vs/platform/instantiation/common/instantiation';
-import { IExtensionsWorkbenchService } from 'vs/workbench/contrib/extensions/common/extensions';
-import { IThemeService } from 'vs/platform/theme/common/themeService';
-import { IExtensionService, IExtensionHostProfile } from 'vs/workbench/services/extensions/common/extensions';
-import { IContextMenuService } from 'vs/platform/contextview/browser/contextView';
-import { Event } from 'vs/base/common/event';
-import { INotificationService } from 'vs/platform/notification/common/notification';
-import { IContextKeyService, RawContextKey, IContextKey } from 'vs/platform/contextkey/common/contextkey';
-import { IStorageService } from 'vs/platform/storage/common/storage';
-import { ILabelService } from 'vs/platform/label/common/label';
-import { ExtensionIdentifier } from 'vs/platform/extensions/common/extensions';
-import { SlowExtensionAction } from 'vs/workbench/contrib/extensions/electron-sandbox/extensionsSlowActions';
-import { IWorkbenchEnvironmentService } from 'vs/workbench/services/environment/common/environmentService';
-import { ReportExtensionIssueAction } from 'vs/workbench/contrib/extensions/common/reportExtensionIssueAction';
-import { AbstractRuntimeExtensionsEditor, IRuntimeExtension } from 'vs/workbench/contrib/extensions/browser/abstractRuntimeExtensionsEditor';
-import { VSBuffer } from 'vs/base/common/buffer';
-import { URI } from 'vs/base/common/uri';
-import { IFileService } from 'vs/platform/files/common/files';
-import { INativeHostService } from 'vs/platform/native/electron-sandbox/native';
-import { IV8Profile, Utils } from 'vs/platform/profiling/common/profiling';
-import { IClipboardService } from 'vs/platform/clipboard/common/clipboardService';
+import * as nls from '../../../../nls.js';
+import { Action } from '../../../../base/common/actions.js';
+import { ITelemetryService } from '../../../../platform/telemetry/common/telemetry.js';
+import { IInstantiationService, createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
+import { IExtensionsWorkbenchService } from '../common/extensions.js';
+import { IThemeService } from '../../../../platform/theme/common/themeService.js';
+import { IExtensionService, IExtensionHostProfile } from '../../../services/extensions/common/extensions.js';
+import { IContextMenuService } from '../../../../platform/contextview/browser/contextView.js';
+import { Event } from '../../../../base/common/event.js';
+import { INotificationService } from '../../../../platform/notification/common/notification.js';
+import { IContextKeyService, RawContextKey, IContextKey } from '../../../../platform/contextkey/common/contextkey.js';
+import { IStorageService } from '../../../../platform/storage/common/storage.js';
+import { ILabelService } from '../../../../platform/label/common/label.js';
+import { ExtensionIdentifier } from '../../../../platform/extensions/common/extensions.js';
+import { SlowExtensionAction } from './extensionsSlowActions.js';
+import { IWorkbenchEnvironmentService } from '../../../services/environment/common/environmentService.js';
+import { ReportExtensionIssueAction } from '../common/reportExtensionIssueAction.js';
+import { AbstractRuntimeExtensionsEditor, IRuntimeExtension } from '../browser/abstractRuntimeExtensionsEditor.js';
+import { VSBuffer } from '../../../../base/common/buffer.js';
+import { URI } from '../../../../base/common/uri.js';
+import { IFileService } from '../../../../platform/files/common/files.js';
+import { IV8Profile, Utils } from '../../../../platform/profiling/common/profiling.js';
+import { IClipboardService } from '../../../../platform/clipboard/common/clipboardService.js';
+import { IFileDialogService } from '../../../../platform/dialogs/common/dialogs.js';
+import { Schemas } from '../../../../base/common/network.js';
+import { joinPath } from '../../../../base/common/resources.js';
+import { IExtensionFeaturesManagementService } from '../../../services/extensionManagement/common/extensionFeatures.js';
+import { IEditorGroup } from '../../../services/editor/common/editorGroupsService.js';
+import { IHoverService } from '../../../../platform/hover/browser/hover.js';
 
 export const IExtensionHostProfileService = createDecorator<IExtensionHostProfileService>('extensionHostProfileService');
 export const CONTEXT_PROFILE_SESSION_STATE = new RawContextKey<string>('profileSessionState', 'none');
@@ -62,6 +67,7 @@ export class RuntimeExtensionsEditor extends AbstractRuntimeExtensionsEditor {
 	private _profileSessionState: IContextKey<string>;
 
 	constructor(
+		group: IEditorGroup,
 		@ITelemetryService telemetryService: ITelemetryService,
 		@IThemeService themeService: IThemeService,
 		@IContextKeyService contextKeyService: IContextKeyService,
@@ -75,8 +81,10 @@ export class RuntimeExtensionsEditor extends AbstractRuntimeExtensionsEditor {
 		@IWorkbenchEnvironmentService environmentService: IWorkbenchEnvironmentService,
 		@IClipboardService clipboardService: IClipboardService,
 		@IExtensionHostProfileService private readonly _extensionHostProfileService: IExtensionHostProfileService,
+		@IExtensionFeaturesManagementService extensionFeaturesManagementService: IExtensionFeaturesManagementService,
+		@IHoverService hoverService: IHoverService
 	) {
-		super(telemetryService, themeService, contextKeyService, extensionsWorkbenchService, extensionService, notificationService, contextMenuService, instantiationService, storageService, labelService, environmentService, clipboardService);
+		super(group, telemetryService, themeService, contextKeyService, extensionsWorkbenchService, extensionService, notificationService, contextMenuService, instantiationService, storageService, labelService, environmentService, clipboardService, extensionFeaturesManagementService, hoverService);
 		this._profileInfo = this._extensionHostProfileService.lastProfile;
 		this._extensionsHostRecorded = CONTEXT_EXTENSION_HOST_PROFILE_RECORDED.bindTo(contextKeyService);
 		this._profileSessionState = CONTEXT_PROFILE_SESSION_STATE.bindTo(contextKeyService);
@@ -170,10 +178,10 @@ export class SaveExtensionHostProfileAction extends Action {
 
 	constructor(
 		id: string = SaveExtensionHostProfileAction.ID, label: string = SaveExtensionHostProfileAction.LABEL,
-		@INativeHostService private readonly _nativeHostService: INativeHostService,
 		@IWorkbenchEnvironmentService private readonly _environmentService: IWorkbenchEnvironmentService,
 		@IExtensionHostProfileService private readonly _extensionHostProfileService: IExtensionHostProfileService,
-		@IFileService private readonly _fileService: IFileService
+		@IFileService private readonly _fileService: IFileService,
+		@IFileDialogService private readonly _fileDialogService: IFileDialogService,
 	) {
 		super(id, label, undefined, false);
 		this._extensionHostProfileService.onDidChangeLastProfile(() => {
@@ -186,24 +194,24 @@ export class SaveExtensionHostProfileAction extends Action {
 	}
 
 	private async _asyncRun(): Promise<any> {
-		const picked = await this._nativeHostService.showSaveDialog({
+		const picked = await this._fileDialogService.showSaveDialog({
 			title: nls.localize('saveprofile.dialogTitle', "Save Extension Host Profile"),
-			buttonLabel: nls.localize('saveprofile.saveButton', "Save"),
-			defaultPath: `CPU-${new Date().toISOString().replace(/[\-:]/g, '')}.cpuprofile`,
+			availableFileSystems: [Schemas.file],
+			defaultUri: joinPath(await this._fileDialogService.defaultFilePath(), `CPU-${new Date().toISOString().replace(/[\-:]/g, '')}.cpuprofile`),
 			filters: [{
 				name: 'CPU Profiles',
 				extensions: ['cpuprofile', 'txt']
 			}]
 		});
 
-		if (!picked || !picked.filePath || picked.canceled) {
+		if (!picked) {
 			return;
 		}
 
 		const profileInfo = this._extensionHostProfileService.lastProfile;
 		let dataToWrite: object = profileInfo ? profileInfo.data : {};
 
-		let savePath = picked.filePath;
+		let savePath = picked.fsPath;
 
 		if (this._environmentService.isBuilt) {
 			// when running from a not-development-build we remove

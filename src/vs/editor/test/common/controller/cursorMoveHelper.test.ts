@@ -2,10 +2,13 @@
  *  Copyright (c) Microsoft Corporation. All rights reserved.
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
-import * as assert from 'assert';
-import { CursorColumns } from 'vs/editor/common/core/cursorColumns';
+import assert from 'assert';
+import { ensureNoDisposablesAreLeakedInTestSuite } from '../../../../base/test/common/utils.js';
+import { CursorColumns } from '../../../common/core/cursorColumns.js';
 
 suite('CursorMove', () => {
+
+	ensureNoDisposablesAreLeakedInTestSuite();
 
 	test('nextRenderTabStop', () => {
 		assert.strictEqual(CursorColumns.nextRenderTabStop(0, 4), 4);

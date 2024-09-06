@@ -3,10 +3,10 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { shuffle } from 'vs/base/common/arrays';
-import { CharCode } from 'vs/base/common/charCode';
-import { compare, compareIgnoreCase, compareSubstring, compareSubstringIgnoreCase } from 'vs/base/common/strings';
-import { URI } from 'vs/base/common/uri';
+import { shuffle } from './arrays.js';
+import { CharCode } from './charCode.js';
+import { compare, compareIgnoreCase, compareSubstring, compareSubstringIgnoreCase } from './strings.js';
+import { URI } from './uri.js';
 
 export interface IKeyIterator<K> {
 	reset(key: K): this;
@@ -552,7 +552,7 @@ export class TernarySearchTree<K, V> {
 				const min = this._min(node.right);
 				if (min.key) {
 					const { key, value, segment } = min;
-					this._delete(min.key!, false);
+					this._delete(min.key, false);
 					node.key = key;
 					node.value = value;
 					node.segment = segment;
@@ -654,6 +654,12 @@ export class TernarySearchTree<K, V> {
 	}
 
 	findSuperstr(key: K): IterableIterator<[K, V]> | undefined {
+		return this._findSuperstrOrElement(key, false);
+	}
+
+	private _findSuperstrOrElement(key: K, allowValue: true): IterableIterator<[K, V]> | V | undefined;
+	private _findSuperstrOrElement(key: K, allowValue: false): IterableIterator<[K, V]> | undefined;
+	private _findSuperstrOrElement(key: K, allowValue: boolean): IterableIterator<[K, V]> | V | undefined {
 		const iter = this._iter.reset(key);
 		let node = this._root;
 		while (node) {
@@ -671,13 +677,21 @@ export class TernarySearchTree<K, V> {
 			} else {
 				// collect
 				if (!node.mid) {
-					return undefined;
+					if (allowValue) {
+						return node.value;
+					} else {
+						return undefined;
+					}
 				} else {
 					return this._entries(node.mid);
 				}
 			}
 		}
 		return undefined;
+	}
+
+	hasElementOrSubtree(key: K): boolean {
+		return this._findSuperstrOrElement(key, true) !== undefined;
 	}
 
 	forEach(callback: (value: V, index: K) => any): void {

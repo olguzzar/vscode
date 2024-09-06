@@ -3,15 +3,16 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { ResolvedKeybinding } from 'vs/base/common/keybindings';
-import { Lazy } from 'vs/base/common/lazy';
-import { CodeAction } from 'vs/editor/common/languages';
-import { codeActionCommandId, fixAllCommandId, organizeImportsCommandId, refactorCommandId, sourceActionCommandId } from 'vs/editor/contrib/codeAction/browser/codeAction';
-import { CodeActionAutoApply, CodeActionCommandArgs, CodeActionKind } from 'vs/editor/contrib/codeAction/common/types';
-import { IKeybindingService } from 'vs/platform/keybinding/common/keybinding';
+import { HierarchicalKind } from '../../../../base/common/hierarchicalKind.js';
+import { ResolvedKeybinding } from '../../../../base/common/keybindings.js';
+import { Lazy } from '../../../../base/common/lazy.js';
+import { CodeAction } from '../../../common/languages.js';
+import { codeActionCommandId, fixAllCommandId, organizeImportsCommandId, refactorCommandId, sourceActionCommandId } from './codeAction.js';
+import { CodeActionAutoApply, CodeActionCommandArgs, CodeActionKind } from '../common/types.js';
+import { IKeybindingService } from '../../../../platform/keybinding/common/keybinding.js';
 
 interface ResolveCodeActionKeybinding {
-	readonly kind: CodeActionKind;
+	readonly kind: HierarchicalKind;
 	readonly preferred: boolean;
 	readonly resolvedKeybinding: ResolvedKeybinding;
 }
@@ -26,7 +27,7 @@ export class CodeActionKeybindingResolver {
 	];
 
 	constructor(
-		private readonly keybindingService: IKeybindingService
+		@IKeybindingService private readonly keybindingService: IKeybindingService
 	) { }
 
 	public getResolver(): (action: CodeAction) => ResolvedKeybinding | undefined {
@@ -46,7 +47,7 @@ export class CodeActionKeybindingResolver {
 				return {
 					resolvedKeybinding: item.resolvedKeybinding!,
 					...CodeActionCommandArgs.fromUser(commandArgs, {
-						kind: CodeActionKind.None,
+						kind: HierarchicalKind.None,
 						apply: CodeActionAutoApply.Never
 					})
 				};
@@ -54,7 +55,7 @@ export class CodeActionKeybindingResolver {
 
 		return (action) => {
 			if (action.kind) {
-				const binding = this.bestKeybindingForCodeAction(action, allCodeActionBindings.getValue());
+				const binding = this.bestKeybindingForCodeAction(action, allCodeActionBindings.value);
 				return binding?.resolvedKeybinding;
 			}
 			return undefined;
@@ -68,7 +69,7 @@ export class CodeActionKeybindingResolver {
 		if (!action.kind) {
 			return undefined;
 		}
-		const kind = new CodeActionKind(action.kind);
+		const kind = new HierarchicalKind(action.kind);
 
 		return candidates
 			.filter(candidate => candidate.kind.contains(kind))

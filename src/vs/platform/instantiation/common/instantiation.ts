@@ -3,8 +3,9 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import * as descriptors from './descriptors';
-import { ServiceCollection } from './serviceCollection';
+import { DisposableStore } from '../../../base/common/lifecycle.js';
+import * as descriptors from './descriptors.js';
+import { ServiceCollection } from './serviceCollection.js';
 
 // ------ internal util
 
@@ -38,11 +39,10 @@ export const IInstantiationService = createDecorator<IInstantiationService>('ins
  * Given a list of arguments as a tuple, attempt to extract the leading, non-service arguments
  * to their own tuple.
  */
-export type GetLeadingNonServiceArgs<Args> =
-	Args extends [...BrandedService[]] ? []
-	: Args extends [infer A, ...BrandedService[]] ? [A]
-	: Args extends [infer A, ...infer R] ? [A, ...GetLeadingNonServiceArgs<R>]
-	: never;
+export type GetLeadingNonServiceArgs<TArgs extends any[]> =
+	TArgs extends [] ? []
+	: TArgs extends [...infer TFirst, BrandedService] ? GetLeadingNonServiceArgs<TFirst>
+	: TArgs;
 
 export interface IInstantiationService {
 
@@ -62,8 +62,21 @@ export interface IInstantiationService {
 	/**
 	 * Creates a child of this service which inherits all current services
 	 * and adds/overwrites the given services.
+	 *
+	 * NOTE that the returned child is `disposable` and should be disposed when not used
+	 * anymore. This will also dispose all the services that this service has created.
 	 */
-	createChild(services: ServiceCollection): IInstantiationService;
+	createChild(services: ServiceCollection, store?: DisposableStore): IInstantiationService;
+
+	/**
+	 * Disposes this instantiation service.
+	 *
+	 * - Will dispose all services that this instantiation service has created.
+	 * - Will dispose all its children but not its parent.
+	 * - Will NOT dispose services-instances that this service has been created with
+	 * - Will NOT dispose consumer-instances this service has created
+	 */
+	dispose(): void;
 }
 
 

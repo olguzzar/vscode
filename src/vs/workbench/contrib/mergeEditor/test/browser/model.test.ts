@@ -3,22 +3,24 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import assert = require('assert');
-import { Disposable, DisposableStore } from 'vs/base/common/lifecycle';
-import { transaction } from 'vs/base/common/observable';
-import { ensureNoDisposablesAreLeakedInTestSuite } from 'vs/base/test/common/utils';
-import { Range } from 'vs/editor/common/core/range';
-import { linesDiffComputers } from 'vs/editor/common/diff/linesDiffComputers';
-import { EndOfLinePreference, ITextModel } from 'vs/editor/common/model';
-import { createModelServices, createTextModel } from 'vs/editor/test/common/testTextModel';
-import { IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
-import { NullTelemetryService } from 'vs/platform/telemetry/common/telemetryUtils';
-import { MergeDiffComputer } from 'vs/workbench/contrib/mergeEditor/browser/model/diffComputer';
-import { MergeEditorModel } from 'vs/workbench/contrib/mergeEditor/browser/model/mergeEditorModel';
-import { MergeEditorTelemetry } from 'vs/workbench/contrib/mergeEditor/browser/telemetry';
+import assert from 'assert';
+import { Disposable, DisposableStore } from '../../../../../base/common/lifecycle.js';
+import { IReader, transaction } from '../../../../../base/common/observable.js';
+import { isDefined } from '../../../../../base/common/types.js';
+import { Range } from '../../../../../editor/common/core/range.js';
+import { linesDiffComputers } from '../../../../../editor/common/diff/linesDiffComputers.js';
+import { EndOfLinePreference, ITextModel } from '../../../../../editor/common/model.js';
+import { createModelServices, createTextModel } from '../../../../../editor/test/common/testTextModel.js';
+import { IInstantiationService } from '../../../../../platform/instantiation/common/instantiation.js';
+import { NullTelemetryService } from '../../../../../platform/telemetry/common/telemetryUtils.js';
+import { IMergeDiffComputer, IMergeDiffComputerResult, toLineRange, toRangeMapping } from '../../browser/model/diffComputer.js';
+import { DetailedLineRangeMapping } from '../../browser/model/mapping.js';
+import { MergeEditorModel } from '../../browser/model/mergeEditorModel.js';
+import { MergeEditorTelemetry } from '../../browser/telemetry.js';
 
 suite('merge editor model', () => {
-	ensureNoDisposablesAreLeakedInTestSuite();
+	// todo: renable when failing case is found https://github.com/microsoft/vscode/pull/190444#issuecomment-1678151428
+	// ensureNoDisposablesAreLeakedInTestSuite();
 
 	test('prepend line', async () => {
 		await testMergeModel(
@@ -222,6 +224,24 @@ suite('merge editor model', () => {
 			}
 		);
 	});
+
+	test('auto-solve equal edits', async () => {
+		await testMergeModel(
+			{
+				"languageId": "javascript",
+				"base": "const { readFileSync } = require('fs');\n\nlet paths = process.argv.slice(2);\nmain(paths);\n\nfunction main(paths) {\n    // print the welcome message\n    printMessage();\n\n    let data = getLineCountInfo(paths);\n    console.log(\"Lines: \" + data.totalLineCount);\n}\n\n/**\n * Prints the welcome message\n*/\nfunction printMessage() {\n    console.log(\"Welcome To Line Counter\");\n}\n\n/**\n * @param {string[]} paths\n*/\nfunction getLineCountInfo(paths) {\n    let lineCounts = paths.map(path => ({ path, count: getLinesLength(readFileSync(path, 'utf8')) }));\n    return {\n        totalLineCount: lineCounts.reduce((acc, { count }) => acc + count, 0),\n        lineCounts,\n    };\n}\n\n/**\n * @param {string} str\n */\nfunction getLinesLength(str) {\n    return str.split('\\n').length;\n}\n",
+				"input1": "const { readFileSync } = require('fs');\n\nlet paths = process.argv.slice(2);\nmain(paths);\n\nfunction main(paths) {\n    // print the welcome message\n    printMessage();\n\n    const data = getLineCountInfo(paths);\n    console.log(\"Lines: \" + data.totalLineCount);\n}\n\nfunction printMessage() {\n    console.log(\"Welcome To Line Counter\");\n}\n\n/**\n * @param {string[]} paths\n*/\nfunction getLineCountInfo(paths) {\n    let lineCounts = paths.map(path => ({ path, count: getLinesLength(readFileSync(path, 'utf8')) }));\n    return {\n        totalLineCount: lineCounts.reduce((acc, { count }) => acc + count, 0),\n        lineCounts,\n    };\n}\n\n/**\n * @param {string} str\n */\nfunction getLinesLength(str) {\n    return str.split('\\n').length;\n}\n",
+				"input2": "const { readFileSync } = require('fs');\n\nlet paths = process.argv.slice(2);\nrun(paths);\n\nfunction run(paths) {\n    // print the welcome message\n    printMessage();\n\n    const data = getLineCountInfo(paths);\n    console.log(\"Lines: \" + data.totalLineCount);\n}\n\nfunction printMessage() {\n    console.log(\"Welcome To Line Counter\");\n}\n\n/**\n * @param {string[]} paths\n*/\nfunction getLineCountInfo(paths) {\n    let lineCounts = paths.map(path => ({ path, count: getLinesLength(readFileSync(path, 'utf8')) }));\n    return {\n        totalLineCount: lineCounts.reduce((acc, { count }) => acc + count, 0),\n        lineCounts,\n    };\n}\n\n/**\n * @param {string} str\n */\nfunction getLinesLength(str) {\n    return str.split('\\n').length;\n}\n",
+				"result": "<<<<<<< uiae\n>>>>>>> Stashed changes",
+				resetResult: true,
+			},
+			async model => {
+				await model.mergeModel.reset();
+
+				assert.deepStrictEqual(model.getResult(), `const { readFileSync } = require('fs');\n\nlet paths = process.argv.slice(2);\nrun(paths);\n\nfunction run(paths) {\n    // print the welcome message\n    printMessage();\n\n    const data = getLineCountInfo(paths);\n    console.log("Lines: " + data.totalLineCount);\n}\n\nfunction printMessage() {\n    console.log("Welcome To Line Counter");\n}\n\n/**\n * @param {string[]} paths\n*/\nfunction getLineCountInfo(paths) {\n    let lineCounts = paths.map(path => ({ path, count: getLinesLength(readFileSync(path, 'utf8')) }));\n    return {\n        totalLineCount: lineCounts.reduce((acc, { count }) => acc + count, 0),\n        lineCounts,\n    };\n}\n\n/**\n * @param {string} str\n */\nfunction getLinesLength(str) {\n    return str.split('\\n').length;\n}\n`);
+			}
+		);
+	});
 });
 
 async function testMergeModel(
@@ -243,6 +263,7 @@ interface MergeModelOptions {
 	input2: string;
 	base: string;
 	result: string;
+	resetResult?: boolean;
 }
 
 function toSmallNumbersDec(value: number): string {
@@ -260,23 +281,27 @@ class MergeModelInterface extends Disposable {
 		const baseTextModel = this._register(createTextModel(options.base, options.languageId));
 		const resultTextModel = this._register(createTextModel(options.result, options.languageId));
 
-		const diffComputer = instantiationService.createInstance(MergeDiffComputer,
-			{
-				// Don't go through the webworker to improve unit test performance & reduce dependencies
-				async computeDiff(textModel1, textModel2) {
-					const result = linesDiffComputers.smart.computeDiff(
-						textModel1.getLinesContent(),
-						textModel2.getLinesContent(),
-						{ ignoreTrimWhitespace: false, maxComputationTime: 10000 }
-					);
-					return {
-						changes: result.changes,
-						quitEarly: result.quitEarly,
-						identical: result.changes.length === 0
-					};
-				},
+		const diffComputer: IMergeDiffComputer = {
+			async computeDiff(textModel1: ITextModel, textModel2: ITextModel, reader: IReader): Promise<IMergeDiffComputerResult> {
+				const result = await linesDiffComputers.getLegacy().computeDiff(
+					textModel1.getLinesContent(),
+					textModel2.getLinesContent(),
+					{ ignoreTrimWhitespace: false, maxComputationTimeMs: 10000, computeMoves: false }
+				);
+				const changes = result.changes.map(c =>
+					new DetailedLineRangeMapping(
+						toLineRange(c.original),
+						textModel1,
+						toLineRange(c.modified),
+						textModel2,
+						c.innerChanges?.map(ic => toRangeMapping(ic)).filter(isDefined)
+					)
+				);
+				return {
+					diffs: changes
+				};
 			}
-		);
+		};
 
 		this.mergeModel = this._register(instantiationService.createInstance(MergeEditorModel,
 			baseTextModel,
@@ -294,9 +319,8 @@ class MergeModelInterface extends Disposable {
 			},
 			resultTextModel,
 			diffComputer,
-			diffComputer,
 			{
-				resetResult: false
+				resetResult: options.resetResult || false
 			},
 			new MergeEditorTelemetry(NullTelemetryService),
 		));

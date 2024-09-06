@@ -4,17 +4,15 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { AddressInfo, createServer } from 'net';
-import { IOpenExtensionWindowResult } from 'vs/platform/debug/common/extensionHostDebug';
-import { ExtensionHostDebugBroadcastChannel } from 'vs/platform/debug/common/extensionHostDebugIpc';
-import { OPTIONS, parseArgs } from 'vs/platform/environment/node/argv';
-import { IUserDataProfilesMainService } from 'vs/platform/userDataProfile/electron-main/userDataProfile';
-import { IWindowsMainService, OpenContext } from 'vs/platform/windows/electron-main/windows';
+import { IOpenExtensionWindowResult } from '../common/extensionHostDebug.js';
+import { ExtensionHostDebugBroadcastChannel } from '../common/extensionHostDebugIpc.js';
+import { OPTIONS, parseArgs } from '../../environment/node/argv.js';
+import { IWindowsMainService, OpenContext } from '../../windows/electron-main/windows.js';
 
 export class ElectronExtensionHostDebugBroadcastChannel<TContext> extends ExtensionHostDebugBroadcastChannel<TContext> {
 
 	constructor(
-		private windowsMainService: IWindowsMainService,
-		private userDataProfilesMainService: IUserDataProfilesMainService
+		private windowsMainService: IWindowsMainService
 	) {
 		super();
 	}
@@ -39,7 +37,8 @@ export class ElectronExtensionHostDebugBroadcastChannel<TContext> extends Extens
 		const [codeWindow] = await this.windowsMainService.openExtensionDevelopmentHostWindow(extDevPaths, {
 			context: OpenContext.API,
 			cli: pargs,
-			profile: await this.userDataProfilesMainService.checkAndCreateProfileFromCli(pargs)
+			forceProfile: pargs.profile,
+			forceTempProfile: pargs['profile-temp']
 		});
 
 		if (!debugRenderer) {
@@ -66,7 +65,7 @@ export class ElectronExtensionHostDebugBroadcastChannel<TContext> extends Extens
 				}
 			};
 
-			const onMessage = (_event: Event, method: string, params: unknown, sessionId?: string) =>
+			const onMessage = (_event: Electron.Event, method: string, params: unknown, sessionId?: string) =>
 				writeMessage(({ method, params, sessionId }));
 
 			win.on('close', () => {

@@ -3,33 +3,33 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { IAsyncDataSource, ITreeRenderer, ITreeNode, ITreeSorter } from 'vs/base/browser/ui/tree/tree';
-import { ITextModelService } from 'vs/editor/common/services/resolverService';
-import { FuzzyScore, createMatches } from 'vs/base/common/filters';
-import { IResourceLabel, ResourceLabels } from 'vs/workbench/browser/labels';
-import { HighlightedLabel, IHighlight } from 'vs/base/browser/ui/highlightedlabel/highlightedLabel';
-import { IIdentityProvider, IListVirtualDelegate, IKeyboardNavigationLabelProvider } from 'vs/base/browser/ui/list/list';
-import { Range } from 'vs/editor/common/core/range';
-import * as dom from 'vs/base/browser/dom';
-import { ITextModel } from 'vs/editor/common/model';
-import { IDisposable, DisposableStore } from 'vs/base/common/lifecycle';
-import { TextModel } from 'vs/editor/common/model/textModel';
-import { BulkFileOperations, BulkFileOperation, BulkFileOperationType, BulkTextEdit, BulkCategory } from 'vs/workbench/contrib/bulkEdit/browser/preview/bulkEditPreview';
-import { FileKind } from 'vs/platform/files/common/files';
-import { localize } from 'vs/nls';
-import { ILabelService } from 'vs/platform/label/common/label';
-import type { IListAccessibilityProvider } from 'vs/base/browser/ui/list/listWidget';
-import { IconLabel } from 'vs/base/browser/ui/iconLabel/iconLabel';
-import { basename } from 'vs/base/common/resources';
-import { IThemeService, ThemeIcon } from 'vs/platform/theme/common/themeService';
-import { compare } from 'vs/base/common/strings';
-import { URI } from 'vs/base/common/uri';
-import { IUndoRedoService } from 'vs/platform/undoRedo/common/undoRedo';
-import { ResourceFileEdit } from 'vs/editor/browser/services/bulkEditService';
-import { ILanguageConfigurationService } from 'vs/editor/common/languages/languageConfigurationRegistry';
-import { ILanguageService } from 'vs/editor/common/languages/language';
-import { PLAINTEXT_LANGUAGE_ID } from 'vs/editor/common/languages/modesRegistry';
-import { SnippetParser } from 'vs/editor/contrib/snippet/browser/snippetParser';
+import { IAsyncDataSource, ITreeRenderer, ITreeNode, ITreeSorter } from '../../../../../base/browser/ui/tree/tree.js';
+import { ITextModelService } from '../../../../../editor/common/services/resolverService.js';
+import { FuzzyScore, createMatches } from '../../../../../base/common/filters.js';
+import { IResourceLabel, ResourceLabels } from '../../../../browser/labels.js';
+import { HighlightedLabel, IHighlight } from '../../../../../base/browser/ui/highlightedlabel/highlightedLabel.js';
+import { IIdentityProvider, IListVirtualDelegate, IKeyboardNavigationLabelProvider } from '../../../../../base/browser/ui/list/list.js';
+import { Range } from '../../../../../editor/common/core/range.js';
+import * as dom from '../../../../../base/browser/dom.js';
+import { ITextModel } from '../../../../../editor/common/model.js';
+import { IDisposable, DisposableStore } from '../../../../../base/common/lifecycle.js';
+import { TextModel } from '../../../../../editor/common/model/textModel.js';
+import { BulkFileOperations, BulkFileOperation, BulkFileOperationType, BulkTextEdit, BulkCategory } from './bulkEditPreview.js';
+import { FileKind } from '../../../../../platform/files/common/files.js';
+import { localize } from '../../../../../nls.js';
+import { ILabelService } from '../../../../../platform/label/common/label.js';
+import type { IListAccessibilityProvider } from '../../../../../base/browser/ui/list/listWidget.js';
+import { IconLabel } from '../../../../../base/browser/ui/iconLabel/iconLabel.js';
+import { basename } from '../../../../../base/common/resources.js';
+import { IThemeService } from '../../../../../platform/theme/common/themeService.js';
+import { ThemeIcon } from '../../../../../base/common/themables.js';
+import { compare } from '../../../../../base/common/strings.js';
+import { URI } from '../../../../../base/common/uri.js';
+import { ResourceFileEdit } from '../../../../../editor/browser/services/bulkEditService.js';
+import { PLAINTEXT_LANGUAGE_ID } from '../../../../../editor/common/languages/modesRegistry.js';
+import { SnippetParser } from '../../../../../editor/contrib/snippet/browser/snippetParser.js';
+import { AriaRole } from '../../../../../base/browser/ui/aria/aria.js';
+import { IInstantiationService } from '../../../../../platform/instantiation/common/instantiation.js';
 
 // --- VIEW MODEL
 
@@ -38,12 +38,32 @@ export interface ICheckable {
 	setChecked(value: boolean): void;
 }
 
-export class CategoryElement {
+export class CategoryElement implements ICheckable {
 
 	constructor(
 		readonly parent: BulkFileOperations,
 		readonly category: BulkCategory
 	) { }
+
+	isChecked(): boolean {
+		const model = this.parent;
+		let checked = true;
+		for (const file of this.category.fileOperations) {
+			for (const edit of file.originalEdits.values()) {
+				checked = checked && model.checked.isChecked(edit);
+			}
+		}
+		return checked;
+	}
+
+	setChecked(value: boolean): void {
+		const model = this.parent;
+		for (const file of this.category.fileOperations) {
+			for (const edit of file.originalEdits.values()) {
+				model.checked.updateChecked(edit, value);
+			}
+		}
+	}
 }
 
 export class FileElement implements ICheckable {
@@ -180,9 +200,7 @@ export class BulkEditDataSource implements IAsyncDataSource<BulkFileOperations, 
 
 	constructor(
 		@ITextModelService private readonly _textModelService: ITextModelService,
-		@IUndoRedoService private readonly _undoRedoService: IUndoRedoService,
-		@ILanguageService private readonly _languageService: ILanguageService,
-		@ILanguageConfigurationService private readonly _languageConfigurationService: ILanguageConfigurationService,
+		@IInstantiationService private readonly _instantiationService: IInstantiationService,
 	) { }
 
 	hasChildren(element: BulkFileOperations | BulkEditElement): boolean {
@@ -219,12 +237,12 @@ export class BulkEditDataSource implements IAsyncDataSource<BulkFileOperations, 
 				textModel = ref.object.textEditorModel;
 				textModelDisposable = ref;
 			} catch {
-				textModel = new TextModel('', PLAINTEXT_LANGUAGE_ID, TextModel.DEFAULT_CREATION_OPTIONS, null, this._undoRedoService, this._languageService, this._languageConfigurationService);
+				textModel = this._instantiationService.createInstance(TextModel, '', PLAINTEXT_LANGUAGE_ID, TextModel.DEFAULT_CREATION_OPTIONS, null);
 				textModelDisposable = textModel;
 			}
 
 			const result = element.edit.textEdits.map((edit, idx) => {
-				const range = Range.lift(edit.textEdit.textEdit.range);
+				const range = textModel.validateRange(edit.textEdit.textEdit.range);
 
 				//prefix-math
 				const startTokens = textModel.tokenization.getLineTokens(range.startLineNumber);
@@ -264,7 +282,7 @@ export class BulkEditSorter implements ITreeSorter<BulkEditElement> {
 
 	compare(a: BulkEditElement, b: BulkEditElement): number {
 		if (a instanceof FileElement && b instanceof FileElement) {
-			return compare(a.edit.uri.toString(), b.edit.uri.toString());
+			return compareBulkFileOperations(a.edit, b.edit);
 		}
 
 		if (a instanceof TextEditElement && b instanceof TextEditElement) {
@@ -273,6 +291,10 @@ export class BulkEditSorter implements ITreeSorter<BulkEditElement> {
 
 		return 0;
 	}
+}
+
+export function compareBulkFileOperations(a: BulkFileOperation, b: BulkFileOperation): number {
+	return compare(a.uri.toString(), b.uri.toString());
 }
 
 // --- ACCESSI
@@ -285,7 +307,7 @@ export class BulkEditAccessibilityProvider implements IListAccessibilityProvider
 		return localize('bulkEdit', "Bulk Edit");
 	}
 
-	getRole(_element: BulkEditElement): string {
+	getRole(_element: BulkEditElement): AriaRole {
 		return 'checkbox';
 	}
 
@@ -554,7 +576,7 @@ class TextEditElementTemplate {
 		this._icon = document.createElement('div');
 		container.appendChild(this._icon);
 
-		this._label = new HighlightedLabel(container);
+		this._label = this._disposables.add(new HighlightedLabel(container));
 	}
 
 	dispose(): void {

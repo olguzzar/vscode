@@ -3,14 +3,19 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import 'vs/css!./media/gettingStarted';
-import { localize } from 'vs/nls';
-import { EditorInput } from 'vs/workbench/common/editor/editorInput';
-import { URI } from 'vs/base/common/uri';
-import { Schemas } from 'vs/base/common/network';
-import { IUntypedEditorInput } from 'vs/workbench/common/editor';
+import './media/gettingStarted.css';
+import { localize } from '../../../../nls.js';
+import { EditorInput } from '../../../common/editor/editorInput.js';
+import { URI } from '../../../../base/common/uri.js';
+import { Schemas } from '../../../../base/common/network.js';
+import { IUntypedEditorInput } from '../../../common/editor.js';
+import { IEditorOptions } from '../../../../platform/editor/common/editor.js';
 
 export const gettingStartedInputTypeId = 'workbench.editors.gettingStartedInput';
+
+export interface GettingStartedEditorOptions extends IEditorOptions {
+	selectedCategory?: string; selectedStep?: string; showTelemetryNotice?: boolean;
+}
 
 export class GettingStartedInput extends EditorInput {
 
@@ -19,6 +24,20 @@ export class GettingStartedInput extends EditorInput {
 
 	override get typeId(): string {
 		return GettingStartedInput.ID;
+	}
+
+	override get editorId(): string | undefined {
+		return this.typeId;
+	}
+
+	override toUntyped(): IUntypedEditorInput {
+		return {
+			resource: GettingStartedInput.RESOURCE,
+			options: {
+				override: GettingStartedInput.ID,
+				pinned: false
+			}
+		};
 	}
 
 	get resource(): URI | undefined {
@@ -37,7 +56,7 @@ export class GettingStartedInput extends EditorInput {
 	}
 
 	constructor(
-		options: { selectedCategory?: string; selectedStep?: string; showTelemetryNotice?: boolean }
+		options: GettingStartedEditorOptions
 	) {
 		super();
 		this.selectedCategory = options.selectedCategory;
@@ -46,7 +65,7 @@ export class GettingStartedInput extends EditorInput {
 	}
 
 	override getName() {
-		return localize('getStarted', "Get Started");
+		return localize('getStarted', "Welcome");
 	}
 
 	selectedCategory: string | undefined;

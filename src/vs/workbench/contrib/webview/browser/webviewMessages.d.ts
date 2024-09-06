@@ -17,6 +17,10 @@ type KeyEvent = {
 	repeat: boolean;
 }
 
+type WebViewDragEvent = {
+	shiftKey: boolean;
+}
+
 export type FromWebviewMessage = {
 	'onmessage': { message: any; transfer?: ArrayBuffer[] };
 	'did-click-link': { uri: string };
@@ -25,7 +29,7 @@ export type FromWebviewMessage = {
 	'did-blur': void;
 	'did-load': void;
 	'did-find': { didFind: boolean };
-	'do-update-state': { state: any };
+	'do-update-state': string;
 	'do-reload': void;
 	'load-resource': { id: number; path: string; query: string; scheme: string; authority: string; ifNoneMatch?: string };
 	'load-localhost': { id: string; origin: string };
@@ -36,7 +40,21 @@ export type FromWebviewMessage = {
 	'did-keyup': KeyEvent;
 	'did-context-menu': { clientX: number; clientY: number; context: { [key: string]: unknown } };
 	'drag-start': void;
+	'drag': WebViewDragEvent
 };
+
+interface UpdateContentEvent {
+	contents: string;
+	title: string | undefined;
+	options: {
+		allowMultipleAPIAcquire: boolean;
+		allowScripts: boolean;
+		allowForms: boolean;
+	};
+	state: any;
+	cspSource: string;
+	confirmBeforeClose: string;
+}
 
 export type ToWebviewMessage = {
 	'focus': void;
@@ -53,25 +71,17 @@ export type ToWebviewMessage = {
 		location: string | undefined;
 	};
 	'set-confirm-before-close': string;
+	'set-context-menu-visible': { visible: boolean };
 	'initial-scroll-position': number;
-	'content': {
-		contents: string;
-		options: {
-			allowMultipleAPIAcquire: boolean;
-			allowScripts: boolean;
-			allowForms: boolean;
-		};
-		state: any;
-		cspSource: string;
-		confirmBeforeClose: string;
-	};
+	'content': UpdateContentEvent;
+	'set-title': string | undefined;
 	'styles': {
 		styles: WebviewStyles;
 		activeTheme: string;
 		themeId: string;
 		themeLabel: string;
 		reduceMotion: boolean;
-	screenReader: boolean;
+		screenReader: boolean;
 	};
 	'find': { value: string; previous?: boolean };
 	'find-stop': { clearSelection?: boolean };

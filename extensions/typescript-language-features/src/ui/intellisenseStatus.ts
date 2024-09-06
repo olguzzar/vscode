@@ -5,11 +5,11 @@
 
 import * as vscode from 'vscode';
 import { CommandManager } from '../commands/commandManager';
+import { isSupportedLanguageMode, isTypeScriptDocument, jsTsLanguageModes } from '../configuration/languageIds';
+import { ProjectType, isImplicitProjectConfigFile, openOrCreateConfig, openProjectConfigForFile, openProjectConfigOrPromptToCreate } from '../tsconfig';
 import { ClientCapability, ITypeScriptServiceClient } from '../typescriptService';
-import { ActiveJsTsEditorTracker } from '../utils/activeJsTsEditorTracker';
 import { Disposable } from '../utils/dispose';
-import { isSupportedLanguageMode, isTypeScriptDocument, jsTsLanguageModes } from '../utils/languageIds';
-import { isImplicitProjectConfigFile, openOrCreateConfig, openProjectConfigForFile, openProjectConfigOrPromptToCreate, ProjectType } from '../utils/tsconfig';
+import { ActiveJsTsEditorTracker } from './activeJsTsEditorTracker';
 
 
 namespace IntellisenseState {
@@ -43,10 +43,12 @@ namespace IntellisenseState {
 	export type State = typeof None | Pending | Resolved | typeof SyntaxOnly;
 }
 
+type CreateOrOpenConfigCommandArgs = [root: vscode.Uri, projectType: ProjectType];
+
 export class IntellisenseStatus extends Disposable {
 
 	public readonly openOpenConfigCommandId = '_typescript.openConfig';
-	public readonly createConfigCommandId = '_typescript.createConfig';
+	public readonly createOrOpenConfigCommandId = '_typescript.createOrOpenConfig';
 
 	private _statusItem?: vscode.LanguageStatusItem;
 
@@ -62,18 +64,18 @@ export class IntellisenseStatus extends Disposable {
 
 		commandManager.register({
 			id: this.openOpenConfigCommandId,
-			execute: async (rootPath: string, projectType: ProjectType) => {
+			execute: async (...[root, projectType]: CreateOrOpenConfigCommandArgs) => {
 				if (this._state.type === IntellisenseState.Type.Resolved) {
-					await openProjectConfigOrPromptToCreate(projectType, this._client, rootPath, this._state.configFile);
+					await openProjectConfigOrPromptToCreate(projectType, this._client, root, this._state.configFile);
 				} else if (this._state.type === IntellisenseState.Type.Pending) {
 					await openProjectConfigForFile(projectType, this._client, this._state.resource);
 				}
 			},
 		});
 		commandManager.register({
-			id: this.createConfigCommandId,
-			execute: async (rootPath: string, projectType: ProjectType) => {
-				await openOrCreateConfig(projectType, rootPath, this._client.configuration);
+			id: this.createOrOpenConfigCommandId,
+			execute: async (...[root, projectType]: CreateOrOpenConfigCommandArgs) => {
+				await openOrCreateConfig(this._client.apiVersion, projectType, root, this._client.configuration);
 			},
 		});
 
@@ -102,7 +104,7 @@ export class IntellisenseStatus extends Disposable {
 			return;
 		}
 
-		const file = this._client.toOpenedFilePath(doc, { suppressAlertOnFailure: true });
+		const file = this._client.toOpenTsFilePath(doc, { suppressAlertOnFailure: true });
 		if (!file) {
 			this.updateState(IntellisenseState.None);
 			return;
@@ -178,11 +180,11 @@ export class IntellisenseStatus extends Disposable {
 					statusItem.text = noConfigFileText;
 					statusItem.detail = undefined;
 					statusItem.command = {
-						command: this.createConfigCommandId,
+						command: this.createOrOpenConfigCommandId,
 						title: this._state.projectType === ProjectType.TypeScript
-							? vscode.l10n.t("Create tsconfig")
-							: vscode.l10n.t("Create jsconfig"),
-						arguments: [rootPath],
+							? vscode.l10n.t("Configure tsconfig")
+							: vscode.l10n.t("Configure jsconfig"),
+						arguments: [rootPath, this._state.projectType] satisfies CreateOrOpenConfigCommandArgs,
 					};
 				} else {
 					statusItem.text = vscode.workspace.asRelativePath(this._state.configFile);
@@ -190,7 +192,7 @@ export class IntellisenseStatus extends Disposable {
 					statusItem.command = {
 						command: this.openOpenConfigCommandId,
 						title: vscode.l10n.t("Open config file"),
-						arguments: [rootPath],
+						arguments: [rootPath, this._state.projectType] satisfies CreateOrOpenConfigCommandArgs,
 					};
 				}
 				break;
