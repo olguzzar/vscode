@@ -11,8 +11,7 @@ import { IMarkdownString } from '../../../../base/common/htmlContent.js';
 import { Iterable } from '../../../../base/common/iterator.js';
 import { IDisposable, toDisposable } from '../../../../base/common/lifecycle.js';
 import { revive } from '../../../../base/common/marshalling.js';
-import { IObservable } from '../../../../base/common/observable.js';
-import { observableValue } from '../../../../base/common/observableInternal/base.js';
+import { IObservable, observableValue } from '../../../../base/common/observable.js';
 import { equalsIgnoreCase } from '../../../../base/common/strings.js';
 import { ThemeIcon } from '../../../../base/common/themables.js';
 import { URI } from '../../../../base/common/uri.js';
@@ -61,6 +60,7 @@ export interface IChatAgentData {
 	name: string;
 	fullName?: string;
 	description?: string;
+	supportsModelPicker?: boolean;
 	when?: string;
 	extensionId: ExtensionIdentifier;
 	extensionPublisherId: string;
@@ -147,6 +147,7 @@ export interface IChatAgentRequest {
 	locationData?: IChatLocationData;
 	acceptedConfirmationData?: any[];
 	rejectedConfirmationData?: any[];
+	userSelectedModelId?: string;
 }
 
 export interface IChatQuestion {
