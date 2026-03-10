@@ -25,9 +25,11 @@ export const enum ProfileResourceType {
 	Settings = 'settings',
 	Keybindings = 'keybindings',
 	Snippets = 'snippets',
+	Prompts = 'prompts',
 	Tasks = 'tasks',
 	Extensions = 'extensions',
 	GlobalState = 'globalState',
+	Mcp = 'mcp',
 }
 
 /**
@@ -35,6 +37,8 @@ export const enum ProfileResourceType {
  */
 export type UseDefaultProfileFlags = { [key in ProfileResourceType]?: boolean };
 export type ProfileResourceTypeFlags = UseDefaultProfileFlags;
+export type SettingValue = string | boolean | number | undefined | null | object;
+export type ISettingsDictionary = Record<string, SettingValue>;
 
 export interface IUserDataProfile {
 	readonly id: string;
@@ -47,7 +51,9 @@ export interface IUserDataProfile {
 	readonly keybindingsResource: URI;
 	readonly tasksResource: URI;
 	readonly snippetsHome: URI;
+	readonly promptsHome: URI;
 	readonly extensionsResource: URI;
+	readonly mcpResource: URI;
 	readonly cacheHome: URI;
 	readonly useDefaultFlags?: UseDefaultProfileFlags;
 	readonly isTransient?: boolean;
@@ -67,8 +73,21 @@ export function isUserDataProfile(thing: unknown): thing is IUserDataProfile {
 		&& URI.isUri(candidate.keybindingsResource)
 		&& URI.isUri(candidate.tasksResource)
 		&& URI.isUri(candidate.snippetsHome)
+		&& URI.isUri(candidate.promptsHome)
 		&& URI.isUri(candidate.extensionsResource)
+		&& URI.isUri(candidate.mcpResource)
 	);
+}
+
+export interface IParsedUserDataProfileTemplate {
+	readonly name: string;
+	readonly icon?: string;
+	readonly settings?: ISettingsDictionary;
+	readonly globalState?: IStringDictionary<string>;
+}
+
+export interface ISystemProfileTemplate extends IParsedUserDataProfileTemplate {
+	readonly id: string;
 }
 
 export type DidChangeProfilesEvent = { readonly added: readonly IUserDataProfile[]; readonly removed: readonly IUserDataProfile[]; readonly updated: readonly IUserDataProfile[]; readonly all: readonly IUserDataProfile[] };
@@ -132,7 +151,9 @@ export function reviveProfile(profile: UriDto<IUserDataProfile>, scheme: string)
 		keybindingsResource: URI.revive(profile.keybindingsResource).with({ scheme }),
 		tasksResource: URI.revive(profile.tasksResource).with({ scheme }),
 		snippetsHome: URI.revive(profile.snippetsHome).with({ scheme }),
+		promptsHome: URI.revive(profile.promptsHome).with({ scheme }),
 		extensionsResource: URI.revive(profile.extensionsResource).with({ scheme }),
+		mcpResource: URI.revive(profile.mcpResource).with({ scheme }),
 		cacheHome: URI.revive(profile.cacheHome).with({ scheme }),
 		useDefaultFlags: profile.useDefaultFlags,
 		isTransient: profile.isTransient,
@@ -152,7 +173,9 @@ export function toUserDataProfile(id: string, name: string, location: URI, profi
 		keybindingsResource: defaultProfile && options?.useDefaultFlags?.keybindings ? defaultProfile.keybindingsResource : joinPath(location, 'keybindings.json'),
 		tasksResource: defaultProfile && options?.useDefaultFlags?.tasks ? defaultProfile.tasksResource : joinPath(location, 'tasks.json'),
 		snippetsHome: defaultProfile && options?.useDefaultFlags?.snippets ? defaultProfile.snippetsHome : joinPath(location, 'snippets'),
+		promptsHome: defaultProfile && options?.useDefaultFlags?.prompts ? defaultProfile.promptsHome : joinPath(location, 'prompts'),
 		extensionsResource: defaultProfile && options?.useDefaultFlags?.extensions ? defaultProfile.extensionsResource : joinPath(location, 'extensions.json'),
+		mcpResource: defaultProfile && options?.useDefaultFlags?.mcp ? defaultProfile.mcpResource : joinPath(location, 'mcp.json'),
 		cacheHome: joinPath(profilesCacheHome, id),
 		useDefaultFlags: options?.useDefaultFlags,
 		isTransient: options?.transient,
@@ -170,6 +193,7 @@ export type StoredUserDataProfile = {
 	location: URI;
 	icon?: string;
 	useDefaultFlags?: UseDefaultProfileFlags;
+	isSystem?: boolean;
 };
 
 export type StoredProfileAssociations = {
@@ -179,10 +203,10 @@ export type StoredProfileAssociations = {
 
 export class UserDataProfilesService extends Disposable implements IUserDataProfilesService {
 
+	readonly _serviceBrand: undefined;
+
 	protected static readonly PROFILES_KEY = 'userDataProfiles';
 	protected static readonly PROFILE_ASSOCIATIONS_KEY = 'profileAssociations';
-
-	readonly _serviceBrand: undefined;
 
 	readonly profilesHome: URI;
 	private readonly profilesCacheHome: URI;
@@ -210,10 +234,10 @@ export class UserDataProfilesService extends Disposable implements IUserDataProf
 	};
 
 	constructor(
-		@IEnvironmentService protected readonly environmentService: IEnvironmentService,
-		@IFileService protected readonly fileService: IFileService,
-		@IUriIdentityService protected readonly uriIdentityService: IUriIdentityService,
-		@ILogService protected readonly logService: ILogService
+		@IEnvironmentService protected environmentService: IEnvironmentService,
+		@IFileService protected fileService: IFileService,
+		@IUriIdentityService protected uriIdentityService: IUriIdentityService,
+		@ILogService protected logService: ILogService
 	) {
 		super();
 		this.profilesHome = joinPath(this.environmentService.userRoamingDataHome, 'profiles');
@@ -231,11 +255,21 @@ export class UserDataProfilesService extends Disposable implements IUserDataProf
 			const profiles: Array<Mutable<IUserDataProfile>> = [defaultProfile];
 			try {
 				for (const storedProfile of this.getStoredProfiles()) {
-					if (!storedProfile.name || !isString(storedProfile.name) || !storedProfile.location) {
+					if (this.isInvalidProfile(storedProfile)) {
 						this.logService.warn('Skipping the invalid stored profile', storedProfile.location || storedProfile.name);
 						continue;
 					}
-					profiles.push(toUserDataProfile(basename(storedProfile.location), storedProfile.name, storedProfile.location, this.profilesCacheHome, { icon: storedProfile.icon, useDefaultFlags: storedProfile.useDefaultFlags }, defaultProfile));
+					const id = basename(storedProfile.location);
+					profiles.push(toUserDataProfile(
+						id,
+						storedProfile.name,
+						storedProfile.location,
+						this.profilesCacheHome,
+						{
+							icon: storedProfile.icon,
+							useDefaultFlags: storedProfile.useDefaultFlags,
+						},
+						defaultProfile));
 				}
 			} catch (error) {
 				this.logService.error(error);
@@ -270,6 +304,25 @@ export class UserDataProfilesService extends Disposable implements IUserDataProf
 			this._profilesObject = { profiles, emptyWindows };
 		}
 		return this._profilesObject;
+	}
+
+	private isInvalidProfile(storedProfile: StoredUserDataProfile): boolean {
+		if (!storedProfile.name) {
+			return true;
+		}
+		if (!isString(storedProfile.name)) {
+			return true;
+		}
+		if (!storedProfile.location) {
+			return true;
+		}
+		if (storedProfile.isSystem) {
+			return true;
+		}
+		if (this.uriIdentityService.extUri.basename(this.uriIdentityService.extUri.dirname(storedProfile.location)) === 'builtin') {
+			return true;
+		}
+		return false;
 	}
 
 	private createDefaultProfile() {
@@ -318,7 +371,14 @@ export class UserDataProfilesService extends Disposable implements IUserDataProf
 					if (URI.isUri(workspace)) {
 						options = { ...options, workspaces: [workspace] };
 					}
-					const profile = toUserDataProfile(id, name, joinPath(this.profilesHome, id), this.profilesCacheHome, options, this.defaultProfile);
+
+					const profile = toUserDataProfile(
+						id,
+						name,
+						this.uriIdentityService.extUri.joinPath(this.profilesHome, id),
+						this.profilesCacheHome,
+						options,
+						this.defaultProfile);
 					await this.fileService.createFolder(profile.location);
 
 					const joiners: Promise<void>[] = [];
@@ -470,11 +530,40 @@ export class UserDataProfilesService extends Disposable implements IUserDataProf
 	}
 
 	async cleanUp(): Promise<void> {
-		if (await this.fileService.exists(this.profilesHome)) {
-			const stat = await this.fileService.resolve(this.profilesHome);
-			await Promise.all((stat.children || [])
-				.filter(child => child.isDirectory && this.profiles.every(p => !this.uriIdentityService.extUri.isEqual(p.location, child.resource)))
-				.map(child => this.fileService.del(child.resource, { recursive: true })));
+		try {
+			if (await this.fileService.exists(this.profilesHome)) {
+				const systemProfilesFolder = this.uriIdentityService.extUri.joinPath(this.profilesHome, 'builtin');
+				if (await this.fileService.exists(systemProfilesFolder)) {
+					try {
+						await this.fileService.del(systemProfilesFolder, { recursive: true });
+					} catch (error) {
+						this.logService.error(error);
+					}
+				}
+				const stat = await this.fileService.resolve(this.profilesHome);
+				await Promise.all((stat.children || [])
+					.filter(child => child.isDirectory && this.profiles.every(p => !this.uriIdentityService.extUri.isEqual(p.location, child.resource)))
+					.map(child => this.fileService.del(child.resource, { recursive: true })));
+			}
+		} catch (error) {
+			this.logService.error('Error deleting redundant profile folders', error);
+		}
+
+		try {
+			const existing = this.getStoredProfiles();
+			const valid: StoredUserDataProfile[] = [];
+			for (const storedProfile of this.getStoredProfiles()) {
+				if (this.isInvalidProfile(storedProfile)) {
+					this.logService.warn(`Invalid user data profile found: ${storedProfile.name}`);
+				} else {
+					valid.push(storedProfile);
+				}
+			}
+			if (existing.length !== valid.length) {
+				this.saveStoredProfiles(valid);
+			}
+		} catch (error) {
+			this.logService.error('Error removing invalid stored profiles', error);
 		}
 	}
 
@@ -513,7 +602,7 @@ export class UserDataProfilesService extends Disposable implements IUserDataProf
 		return false;
 	}
 
-	private updateProfiles(added: IUserDataProfile[], removed: IUserDataProfile[], updated: IUserDataProfile[]): void {
+	private updateProfiles(added: IUserDataProfile[], removed: IUserDataProfile[], updated: IUserDataProfile[], donotTrigger: boolean = false): void {
 		const allProfiles: Mutable<IUserDataProfile>[] = [...this.profiles, ...added];
 
 		const transientProfiles = this.transientProfilesObject.profiles;
@@ -559,7 +648,10 @@ export class UserDataProfilesService extends Disposable implements IUserDataProf
 		}
 
 		this.updateStoredProfiles(profiles);
-		this.triggerProfilesChanges(added, removed, updated);
+
+		if (!donotTrigger) {
+			this.triggerProfilesChanges(added, removed, updated);
+		}
 	}
 
 	protected triggerProfilesChanges(added: IUserDataProfile[], removed: IUserDataProfile[], updated: IUserDataProfile[]) {
@@ -599,7 +691,12 @@ export class UserDataProfilesService extends Disposable implements IUserDataProf
 				continue;
 			}
 			if (!profile.isDefault) {
-				storedProfiles.push({ location: profile.location, name: profile.name, icon: profile.icon, useDefaultFlags: profile.useDefaultFlags });
+				storedProfiles.push({
+					location: profile.location,
+					name: profile.name,
+					icon: profile.icon,
+					useDefaultFlags: profile.useDefaultFlags,
+				});
 			}
 			if (profile.workspaces) {
 				for (const workspace of profile.workspaces) {

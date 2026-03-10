@@ -128,40 +128,46 @@ export class MarkerController implements IEditorContribution {
 	}
 
 	showAtMarker(marker: IMarker): void {
-		if (this._editor.hasModel()) {
-			const model = this._getOrCreateModel(this._editor.getModel().uri);
-			model.resetIndex();
-			model.move(true, this._editor.getModel(), new Position(marker.startLineNumber, marker.startColumn));
-			if (model.selected) {
-				this._widget!.showAtMarker(model.selected.marker, model.selected.index, model.selected.total);
-			}
+		if (!this._editor.hasModel()) {
+			return;
+		}
+
+		const textModel = this._editor.getModel();
+		const model = this._getOrCreateModel(textModel.uri);
+		model.resetIndex();
+		model.move(true, textModel, new Position(marker.startLineNumber, marker.startColumn));
+		if (model.selected) {
+			this._widget!.showAtMarker(model.selected.marker, model.selected.index, model.selected.total);
 		}
 	}
 
-	async nagivate(next: boolean, multiFile: boolean) {
-		if (this._editor.hasModel()) {
-			const model = this._getOrCreateModel(multiFile ? undefined : this._editor.getModel().uri);
-			model.move(next, this._editor.getModel(), this._editor.getPosition());
-			if (!model.selected) {
-				return;
-			}
-			if (model.selected.marker.resource.toString() !== this._editor.getModel().uri.toString()) {
-				// show in different editor
-				this._cleanUp();
-				const otherEditor = await this._editorService.openCodeEditor({
-					resource: model.selected.marker.resource,
-					options: { pinned: false, revealIfOpened: true, selectionRevealType: TextEditorSelectionRevealType.NearTop, selection: model.selected.marker }
-				}, this._editor);
+	async navigate(next: boolean, multiFile: boolean) {
+		if (!this._editor.hasModel()) {
+			return;
+		}
 
-				if (otherEditor) {
-					MarkerController.get(otherEditor)?.close();
-					MarkerController.get(otherEditor)?.nagivate(next, multiFile);
-				}
+		const textModel = this._editor.getModel();
+		const model = this._getOrCreateModel(multiFile ? undefined : textModel.uri);
+		model.move(next, textModel, this._editor.getPosition());
+		if (!model.selected) {
+			return;
+		}
+		if (model.selected.marker.resource.toString() !== textModel.uri.toString()) {
+			// show in different editor
+			this._cleanUp();
+			const otherEditor = await this._editorService.openCodeEditor({
+				resource: model.selected.marker.resource,
+				options: { pinned: false, revealIfOpened: true, selectionRevealType: TextEditorSelectionRevealType.NearTop, selection: model.selected.marker }
+			}, this._editor);
 
-			} else {
-				// show in this editor
-				this._widget!.showAtMarker(model.selected.marker, model.selected.index, model.selected.total);
+			if (otherEditor) {
+				MarkerController.get(otherEditor)?.close();
+				MarkerController.get(otherEditor)?.navigate(next, multiFile);
 			}
+
+		} else {
+			// show in this editor
+			this._widget!.showAtMarker(model.selected.marker, model.selected.index, model.selected.total);
 		}
 	}
 }
@@ -178,13 +184,13 @@ class MarkerNavigationAction extends EditorAction {
 
 	async run(_accessor: ServicesAccessor, editor: ICodeEditor): Promise<void> {
 		if (editor.hasModel()) {
-			MarkerController.get(editor)?.nagivate(this._next, this._multiFile);
+			await MarkerController.get(editor)?.navigate(this._next, this._multiFile);
 		}
 	}
 }
 
 export class NextMarkerAction extends MarkerNavigationAction {
-	static ID: string = 'editor.action.marker.next';
+	static readonly ID = 'editor.action.marker.next';
 	static LABEL = nls.localize2('markerAction.next.label', "Go to Next Problem (Error, Warning, Info)");
 	constructor() {
 		super(true, false, {
@@ -207,8 +213,8 @@ export class NextMarkerAction extends MarkerNavigationAction {
 	}
 }
 
-class PrevMarkerAction extends MarkerNavigationAction {
-	static ID: string = 'editor.action.marker.prev';
+export class PrevMarkerAction extends MarkerNavigationAction {
+	static readonly ID = 'editor.action.marker.prev';
 	static LABEL = nls.localize2('markerAction.previous.label', "Go to Previous Problem (Error, Warning, Info)");
 	constructor() {
 		super(false, false, {
@@ -231,10 +237,11 @@ class PrevMarkerAction extends MarkerNavigationAction {
 	}
 }
 
-class NextMarkerInFilesAction extends MarkerNavigationAction {
+export class NextMarkerInFilesAction extends MarkerNavigationAction {
+	static readonly ID = 'editor.action.marker.nextInFiles';
 	constructor() {
 		super(true, true, {
-			id: 'editor.action.marker.nextInFiles',
+			id: NextMarkerInFilesAction.ID,
 			label: nls.localize2('markerAction.nextInFiles.label', "Go to Next Problem in Files (Error, Warning, Info)"),
 			precondition: undefined,
 			kbOpts: {
@@ -252,10 +259,11 @@ class NextMarkerInFilesAction extends MarkerNavigationAction {
 	}
 }
 
-class PrevMarkerInFilesAction extends MarkerNavigationAction {
+export class PrevMarkerInFilesAction extends MarkerNavigationAction {
+	static readonly ID = 'editor.action.marker.prevInFiles';
 	constructor() {
 		super(false, true, {
-			id: 'editor.action.marker.prevInFiles',
+			id: PrevMarkerInFilesAction.ID,
 			label: nls.localize2('markerAction.previousInFiles.label', "Go to Previous Problem in Files (Error, Warning, Info)"),
 			precondition: undefined,
 			kbOpts: {

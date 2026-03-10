@@ -55,6 +55,14 @@ fsevents/test/**
 @vscode/windows-registry/build/**
 !@vscode/windows-registry/build/Release/*.node
 
+@vscode/tree-sitter-wasm/wasm/tree-sitter-*.wasm
+!@vscode/tree-sitter-wasm/wasm/tree-sitter-typescript.wasm
+!@vscode/tree-sitter-wasm/wasm/tree-sitter-regex.wasm
+!@vscode/tree-sitter-wasm/wasm/tree-sitter-ini.wasm
+!@vscode/tree-sitter-wasm/wasm/tree-sitter-css.wasm
+!@vscode/tree-sitter-wasm/wasm/tree-sitter-powershell.wasm
+!@vscode/tree-sitter-wasm/wasm/tree-sitter-bash.wasm
+
 native-keymap/binding.gyp
 native-keymap/build/**
 native-keymap/src/**
@@ -67,10 +75,10 @@ native-is-elevated/src/**
 native-is-elevated/deps/**
 !native-is-elevated/build/Release/*.node
 
-native-watchdog/binding.gyp
-native-watchdog/build/**
-native-watchdog/src/**
-!native-watchdog/build/Release/*.node
+@vscode/native-watchdog/binding.gyp
+@vscode/native-watchdog/build/**
+@vscode/native-watchdog/src/**
+!@vscode/native-watchdog/build/Release/*.node
 
 @vscode/vsce-sign/**
 !@vscode/vsce-sign/src/main.d.ts
@@ -130,6 +138,7 @@ vsda/**
 !@vscode/windows-ca-certs/package.json
 !@vscode/windows-ca-certs/**/*.node
 
+@vscode/node-addon-api/**/*
 node-addon-api/**/*
 prebuild-install/**/*
 

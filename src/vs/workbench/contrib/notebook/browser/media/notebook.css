@@ -263,6 +263,10 @@
 	line-height: 15px;
 }
 
+.monaco-workbench .notebookOverlay > .cell-list-container > .monaco-list > .monaco-scrollable-element > .monaco-list-rows > .monaco-list-row .execution-count-label .codicon {
+	font-size: 14px;
+}
+
 .monaco-workbench .notebookOverlay .cell .cell-editor-part {
 	position: relative;
 }
@@ -290,10 +294,12 @@
 	left: 0px;
 	top: 0px;
 	bottom: 0px;
+	border-radius: var(--vscode-cornerRadius-medium);
 	outline-offset: -1px;
 	display: block;
 	position: absolute;
 	pointer-events: none;
+	box-shadow: inset var(--vscode-shadow-sm);
 }
 
 .monaco-workbench .notebookOverlay .monaco-list .monaco-list-row .cell-insertion-indicator-top {
@@ -334,10 +340,6 @@
 	flex-direction: row-reverse;
 }
 
-.monaco-workbench .notebookOverlay .monaco-list:focus-within .monaco-list-row .codicon:not(.suggest-icon) {
-	color: inherit;
-}
-
 .monaco-workbench .notebookOverlay > .cell-list-container .notebook-overview-ruler-container {
 	position: absolute;
 	top: 0;
@@ -375,7 +377,17 @@
 .notebookOverlay .cell-drag-image .cell-editor-container > div {
 	background: var(--vscode-editor-background) !important;
 }
-.notebookOverlay .monaco-list-row .cell-title-toolbar,
+
+.notebookOverlay .cell-bottom-toolbar-container .action-item {
+	border-radius: var(--vscode-cornerRadius-small);
+}
+
+.notebookOverlay .monaco-list-row .cell-title-toolbar {
+	border-radius: var(--vscode-cornerRadius-medium);
+	box-shadow: var(--vscode-shadow-sm);
+	background-color: var(--vscode-editorWidget-background);
+}
+
 .notebookOverlay .monaco-list-row.cell-drag-image,
 .notebookOverlay .cell-bottom-toolbar-container .action-item,
 .notebookOverlay .cell-list-top-cell-toolbar-container .action-item {
@@ -447,6 +459,18 @@
 .monaco-workbench .notebookOverlay .monaco-list .monaco-list-row.code-cell-row.nb-symbolHighlight .cell-focus-indicator,
 .monaco-workbench .notebookOverlay .monaco-list .monaco-list-row.markdown-cell-row.nb-symbolHighlight {
 	background-color: var(--vscode-notebook-symbolHighlightBackground) !important;
+}
+
+/** Cell execution inline vars */
+.nb-inline-value {
+	background-color: var(--vscode-editorInlayHint-background);
+	color: var(--vscode-editorInlayHint-foreground) !important;
+	font-size: 90%;
+}
+
+/** Notebook Textual Selection Highlight */
+.nb-selection-highlight {
+	background-color: var(--vscode-editor-selectionHighlightBackground);
 }
 
 /** Cell Multi-Cursor Cursor highlight */

@@ -26,7 +26,7 @@ import { IInstantiationService } from '../../../../platform/instantiation/common
 import { ILabelService } from '../../../../platform/label/common/label.js';
 import { IMarker, IRelatedInformation, MarkerSeverity } from '../../../../platform/markers/common/markers.js';
 import { IOpenerService } from '../../../../platform/opener/common/opener.js';
-import { SeverityIcon } from '../../../../platform/severityIcon/browser/severityIcon.js';
+import { SeverityIcon } from '../../../../base/browser/ui/severityIcon/severityIcon.js';
 import { contrastBorder, editorBackground, editorErrorBorder, editorErrorForeground, editorInfoBorder, editorInfoForeground, editorWarningBorder, editorWarningForeground, oneOf, registerColor, transparent } from '../../../../platform/theme/common/colorRegistry.js';
 import { IColorTheme, IThemeService } from '../../../../platform/theme/common/themeService.js';
 
@@ -294,6 +294,7 @@ export class MarkerNavigationWidget extends PeekViewWidget {
 
 	override dispose(): void {
 		this._callOnDispose.dispose();
+		this._onDidSelectRelatedInformation.dispose();
 		super.dispose();
 	}
 
@@ -358,7 +359,7 @@ export class MarkerNavigationWidget extends PeekViewWidget {
 		}
 		this._icon.className = `codicon ${SeverityIcon.className(MarkerSeverity.toSeverity(this._severity))}`;
 
-		this.editor.revealPositionNearTop(position, ScrollType.Smooth);
+		this.editor.revealPositionInCenterIfOutsideViewport(position, ScrollType.Smooth);
 		this.editor.focus();
 	}
 

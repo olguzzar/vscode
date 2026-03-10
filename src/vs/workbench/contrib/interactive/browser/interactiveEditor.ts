@@ -5,6 +5,7 @@
 
 import './media/interactive.css';
 import * as DOM from '../../../../base/browser/dom.js';
+import * as domStylesheets from '../../../../base/browser/domStylesheets.js';
 import { CancellationToken } from '../../../../base/common/cancellation.js';
 import { Emitter, Event } from '../../../../base/common/event.js';
 import { DisposableStore, MutableDisposable } from '../../../../base/common/lifecycle.js';
@@ -170,10 +171,10 @@ export class InteractiveEditor extends EditorPane implements IEditorPaneWithScro
 				this._editorOptions = this._computeEditorOptions();
 			}
 		}));
-		this._notebookOptions = instantiationService.createInstance(NotebookOptions, this.window, true, { cellToolbarInteraction: 'hover', globalToolbar: true, stickyScrollEnabled: false, dragAndDropEnabled: false });
+		this._notebookOptions = instantiationService.createInstance(NotebookOptions, this.window, true, { cellToolbarInteraction: 'hover', globalToolbar: true, stickyScrollEnabled: false, dragAndDropEnabled: false, disableRulers: true });
 		this._editorMemento = this.getEditorMemento<InteractiveEditorViewState>(editorGroupService, textResourceConfigurationService, INTERACTIVE_EDITOR_VIEW_STATE_PREFERENCE_KEY);
 
-		codeEditorService.registerDecorationType('interactive-decoration', DECORATION_KEY, {});
+		this._register(codeEditorService.registerDecorationType('interactive-decoration', DECORATION_KEY, {}));
 		this._register(this._keybindingService.onDidUpdateKeybindings(this._updateInputHint, this));
 		this._register(this._notebookExecutionStateService.onDidChangeExecution((e) => {
 			if (e.type === NotebookExecutionType.cell && isEqual(e.notebook, this._notebookWidget.value?.viewModel?.notebookDocument.uri)) {
@@ -222,7 +223,7 @@ export class InteractiveEditor extends EditorPane implements IEditorPaneWithScro
 	}
 
 	private _createLayoutStyles(): void {
-		this._styleElement = DOM.createStyleSheet(this._rootElement);
+		this._styleElement = domStylesheets.createStyleSheet(this._rootElement);
 		const styleSheets: string[] = [];
 
 		const {
@@ -295,8 +296,9 @@ export class InteractiveEditor extends EditorPane implements IEditorPaneWithScro
 					bottom: INPUT_EDITOR_PADDING
 				},
 				hover: {
-					enabled: true
-				}
+					enabled: 'on' as const
+				},
+				rulers: []
 			}
 		});
 
@@ -406,7 +408,7 @@ export class InteractiveEditor extends EditorPane implements IEditorPaneWithScro
 					ContentHoverController.ID,
 					GlyphHoverController.ID,
 					MarkerController.ID,
-					INLINE_CHAT_ID
+					INLINE_CHAT_ID,
 				])
 			}
 		});
@@ -501,21 +503,21 @@ export class InteractiveEditor extends EditorPane implements IEditorPaneWithScro
 			}
 		}));
 
-		this._codeEditorWidget.onDidChangeModelDecorations(() => {
+		this._widgetDisposableStore.add(this._codeEditorWidget.onDidChangeModelDecorations(() => {
 			if (this.isVisible()) {
 				this._updateInputHint();
 			}
-		});
+		}));
 
 		this._widgetDisposableStore.add(this._codeEditorWidget.onDidChangeModel(() => {
 			this._updateInputHint();
 		}));
 
-		this._configurationService.onDidChangeConfiguration(e => {
+		this._widgetDisposableStore.add(this._configurationService.onDidChangeConfiguration(e => {
 			if (e.affectsConfiguration(ReplEditorSettings.showExecutionHint)) {
 				this._updateInputHint();
 			}
-		});
+		}));
 
 		const cursorAtBoundaryContext = INTERACTIVE_INPUT_CURSOR_BOUNDARY.bindTo(this._contextKeyService);
 		if (input.resource && input.historyService.has(input.resource)) {

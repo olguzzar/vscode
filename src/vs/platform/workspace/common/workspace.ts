@@ -74,6 +74,11 @@ export interface IWorkspaceContextService {
 	 * Returns if the provided resource is inside the workspace or not.
 	 */
 	isInsideWorkspace(resource: URI): boolean;
+
+	/**
+	 * Return `true` if the current workspace has data (e.g. folders or a workspace configuration) that can be sent to the extension host, otherwise `false`.
+	 */
+	hasWorkspaceData(): boolean;
 }
 
 export interface IResolvedWorkspace extends IWorkspaceIdentifier, IBaseWorkspace {
@@ -281,6 +286,7 @@ export interface IWorkspace {
 	 * the location of the workspace configuration
 	 */
 	readonly configuration?: URI | null;
+
 }
 
 export function isWorkspace(thing: unknown): thing is IWorkspace {
@@ -329,16 +335,23 @@ export function isWorkspaceFolder(thing: unknown): thing is IWorkspaceFolder {
 
 export class Workspace implements IWorkspace {
 
-	private _foldersMap: TernarySearchTree<URI, WorkspaceFolder> = TernarySearchTree.forUris<WorkspaceFolder>(this._ignorePathCasing, () => true);
+	private foldersMap: TernarySearchTree<URI, WorkspaceFolder>;
+
 	private _folders!: WorkspaceFolder[];
+	get folders(): WorkspaceFolder[] { return this._folders; }
+	set folders(folders: WorkspaceFolder[]) {
+		this._folders = folders;
+		this.updateFoldersMap();
+	}
 
 	constructor(
 		private _id: string,
 		folders: WorkspaceFolder[],
 		private _transient: boolean,
 		private _configuration: URI | null,
-		private _ignorePathCasing: (key: URI) => boolean,
+		private ignorePathCasing: (key: URI) => boolean,
 	) {
+		this.foldersMap = TernarySearchTree.forUris<WorkspaceFolder>(this.ignorePathCasing, () => true);
 		this.folders = folders;
 	}
 
@@ -346,17 +359,8 @@ export class Workspace implements IWorkspace {
 		this._id = workspace.id;
 		this._configuration = workspace.configuration;
 		this._transient = workspace.transient;
-		this._ignorePathCasing = workspace._ignorePathCasing;
+		this.ignorePathCasing = workspace.ignorePathCasing;
 		this.folders = workspace.folders;
-	}
-
-	get folders(): WorkspaceFolder[] {
-		return this._folders;
-	}
-
-	set folders(folders: WorkspaceFolder[]) {
-		this._folders = folders;
-		this.updateFoldersMap();
 	}
 
 	get id(): string {
@@ -380,13 +384,13 @@ export class Workspace implements IWorkspace {
 			return null;
 		}
 
-		return this._foldersMap.findSubstr(resource) || null;
+		return this.foldersMap.findSubstr(resource) || null;
 	}
 
 	private updateFoldersMap(): void {
-		this._foldersMap = TernarySearchTree.forUris<WorkspaceFolder>(this._ignorePathCasing, () => true);
+		this.foldersMap = TernarySearchTree.forUris<WorkspaceFolder>(this.ignorePathCasing, () => true);
 		for (const folder of this.folders) {
-			this._foldersMap.set(folder.uri, folder);
+			this.foldersMap.set(folder.uri, folder);
 		}
 	}
 

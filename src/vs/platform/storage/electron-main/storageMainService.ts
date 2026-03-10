@@ -91,6 +91,8 @@ export class StorageMainService extends Disposable implements IStorageMainServic
 	) {
 		super();
 
+		this.applicationStorage = this._register(this.createApplicationStorage());
+
 		this.registerListeners();
 	}
 
@@ -163,7 +165,7 @@ export class StorageMainService extends Disposable implements IStorageMainServic
 
 	//#region Application Storage
 
-	readonly applicationStorage = this._register(this.createApplicationStorage());
+	readonly applicationStorage: IStorageMain;
 
 	private createApplicationStorage(): IStorageMain {
 		this.logService.trace(`StorageMainService: creating application storage`);
@@ -195,18 +197,20 @@ export class StorageMainService extends Disposable implements IStorageMainServic
 			profileStorage = this._register(this.createProfileStorage(profile));
 			this.mapProfileToStorage.set(profile.id, profileStorage);
 
-			const listener = this._register(profileStorage.onDidChangeStorage(e => this._onDidChangeProfileStorage.fire({
+			// Don't use this._register() for listeners that are disposed early
+			// as it causes entries to accumulate in _store when storage is closed/reopened
+			const listener = profileStorage.onDidChangeStorage(e => this._onDidChangeProfileStorage.fire({
 				...e,
 				storage: profileStorage!,
 				profile
-			})));
+			}));
 
-			this._register(Event.once(profileStorage.onDidCloseStorage)(() => {
+			Event.once(profileStorage.onDidCloseStorage)(() => {
 				this.logService.trace(`StorageMainService: closed profile storage (${profile.name})`);
 
 				this.mapProfileToStorage.delete(profile.id);
 				listener.dispose();
-			}));
+			});
 		}
 
 		return profileStorage;
@@ -240,11 +244,12 @@ export class StorageMainService extends Disposable implements IStorageMainServic
 			workspaceStorage = this._register(this.createWorkspaceStorage(workspace));
 			this.mapWorkspaceToStorage.set(workspace.id, workspaceStorage);
 
-			this._register(Event.once(workspaceStorage.onDidCloseStorage)(() => {
+			// Don't use this._register() for Event.once as it auto-disposes
+			Event.once(workspaceStorage.onDidCloseStorage)(() => {
 				this.logService.trace(`StorageMainService: closed workspace storage (${workspace.id})`);
 
 				this.mapWorkspaceToStorage.delete(workspace.id);
-			}));
+			});
 		}
 
 		return workspaceStorage;
@@ -332,13 +337,15 @@ export class ApplicationStorageMainService extends AbstractStorageService implem
 
 	declare readonly _serviceBrand: undefined;
 
-	readonly whenReady = this.storageMainService.applicationStorage.whenInit;
+	readonly whenReady: Promise<void>;
 
 	constructor(
 		@IUserDataProfilesService private readonly userDataProfilesService: IUserDataProfilesService,
 		@IStorageMainService private readonly storageMainService: IStorageMainService
 	) {
 		super();
+
+		this.whenReady = this.storageMainService.applicationStorage.whenInit;
 	}
 
 	protected doInitialize(): Promise<void> {
